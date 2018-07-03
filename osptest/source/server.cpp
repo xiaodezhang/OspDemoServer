@@ -1,6 +1,9 @@
 #include"osp.h"
 #include"server.h"
 
+
+CSApp g_cCSApp;
+
 int main(){
 
 #ifdef _MSC_VER
@@ -12,6 +15,7 @@ int main(){
         if(!ret){
                 OspPrintf(1,0,"osp init fail\n");
         }
+        g_cCSApp.CreateApp("OspServerApp",SERVER_APP_ID,SERVER_APP_PRI,MAX_MSG_WAITING);
         ret = OspCreateTcpNode(0,OSP_AGENT_SERVER_PORT);
 
         if(INVALID_SOCKET == ret){
@@ -36,7 +40,12 @@ void CSInstance::InstanceEntry(CMessage * const pMsg){
         u16 curEvent = pMsg->event;
 
         switch(curState){
-                case IDLE_STATE:
+                case IDLE_STATE:{
+                        switch(curEvent){
+                                case SERVER_CONNECT_TEST:
+                                        OspPrintf(1,0,"connect sucessfully\n");
+                        }
+                }
                         break;
                 case RUNNING_STATE:
                         break;
