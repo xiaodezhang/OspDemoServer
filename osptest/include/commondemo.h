@@ -31,4 +31,13 @@ const u8 MAX_ALIAS_LENGTH = 20;
 #define  LOG_LVL_KEY        3
 #define  LOG_LVL_DETAIL     4
 
+#define SYS_LOG_LEVEL       0
+
+#define SIGN_IN                      (EV_CLIENT_TEST_BGN+2)
+#define SIGN_OUT                     (EV_CLIENT_TEST_BGN+3)
+#define SIGN_IN_ACK                  (EV_CLIENT_TEST_BGN+4)
+#define SIGN_OUT_CMD                 (EV_CLIENT_TEST_BGN+5)
+#define SIGN_OUT_ACK                 (EV_CLIENT_TEST_BGN+6)
+
+
 #endif /*_COMMON_DEMO_H*/

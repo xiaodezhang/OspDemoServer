@@ -7,11 +7,12 @@ CSApp g_cCSApp;
 int main(){
 
 #ifdef _MSC_VER
-        int ret = OspInit(TRUE,0,"WindowsOspServer");
+        int ret = OspInit(TRUE,2500,"WindowsOspServer");
 #else
-        int ret = OspInit(TRUE,0,"LinuxOspServer");
+        int ret = OspInit(TRUE,2500,"LinuxOspServer");
 #endif
 
+        printf("demo osp server\n");
         if(!ret){
                 OspPrintf(1,0,"osp init fail\n");
         }
@@ -54,4 +55,69 @@ void CSInstance::InstanceEntry(CMessage * const pMsg){
         }
 
         OspPrintf(1,0,"instance entry\n");
+}
+
+void CSInstance::DaemonInstanceEntry(CMessage * const pcMsg,CApp *pCApp){
+
+	if (NULL == pcMsg) {
+		OspLog(LOG_LVL_ERROR, "[CCltInstance::DaemonInstanceEntry] NULL == pcMsg.\n");
+		return;
+	}
+	if (NULL == pCApp) {
+		OspLog(LOG_LVL_ERROR, "[CCltInstance::DaemonInstanceEntry] NULL == pCApp.\n");
+		return;
+	}
+
+	u32 dwcurState = CurState();
+	u16 wEvent = pcMsg->event;
+	CSInstance *pCSInstance = NULL;
+
+         switch(wEvent){
+                 case SIGN_IN:{
+                       if(CheckAuthorization((TSinInfo*)pcMsg->content,pcMsg->length)){
+                               if(OSP_OK != post(pcMsg->srcid,SIGN_IN_ACK,"succeed"
+                                     ,strlen("succeed"),pcMsg->srcnode)){
+                                       OspPrintf(1,0,"post back failed\n");
+                                       printf("post back failed\n");
+                               }
+                               OspLog(SYS_LOG_LEVEL,"sign in\n");
+                               OspPrintf(1,1,"sign in\n");
+                       }else{
+                               post(pcMsg->srcid,SIGN_IN_ACK,"failed",strlen("failed"),pcMsg->srcnode);
+                               OspLog(SYS_LOG_LEVEL,"sign in failed\n");
+                               OspPrintf(1,1,"sign in failed\n");
+                       }
+                 }
+                 break;
+                 case SIGN_OUT:{
+printf("get sign out\n");
+                      post(pcMsg->srcid,SIGN_OUT_ACK,NULL,0,pcMsg->srcnode);
+                      OspLog(SYS_LOG_LEVEL,"sign out\n");
+                      OspPrintf(1,1,"sign out\n");
+                 }
+                 break;
+
+         }
+
+}
+
+
+bool CSInstance::CheckAuthorization(TSinInfo *tSinInfo,u32 dwLen){
+
+        if(!tSinInfo || dwLen <=0 ){
+                OspPrintf(1,0,"no sign info\n");
+                return false;
+        }
+
+        if(0 == strcmp(g_tSinInfo.g_Username,tSinInfo->g_Username)
+                        && 0 == strcmp(g_tSinInfo.g_Passwd,tSinInfo->g_Passwd)){
+                OspLog(SYS_LOG_LEVEL,"user authorized\n");
+                OspPrintf(1,0,"user authorized\n");
+                return true;
+        }else{
+                OspPrintf(1,0,"username:%s\npassword:%s\n",g_tSinInfo.g_Username,g_tSinInfo.g_Passwd);
+                OspLog(SYS_LOG_LEVEL,"user not authorized\n");
+                OspPrintf(1,0,"user not authorized\n");
+                return false;
+        }
 }
