@@ -4,6 +4,7 @@
 
 CSApp g_cCSApp;
 
+char buffer[BUFFER_SIZE];
 int main(){
 
 #ifdef _MSC_VER
@@ -43,12 +44,43 @@ void CSInstance::InstanceEntry(CMessage * const pMsg){
         switch(curState){
                 case IDLE_STATE:{
                         switch(curEvent){
-                                case SERVER_CONNECT_TEST:
+                                case SERVER_CONNECT_TEST:{
                                         OspPrintf(1,0,"connect sucessfully\n");
+                                }
+                                break;
+                                case FILE_NAME_SEND:{
+                                     if(pMsg->length > MAX_FILE_NAME_LENGTH-1){
+                                             OspLog(LOG_LVL_ERROR,"[InstanceEntry] file name length error\n");
+                                             OspPrintf(1,0,"file name length error\n");
+                                     }
+                                     strcpy((char*)FileName,(const char*)pMsg->content);
+                                     post(pMsg->srcid,FILE_NAME_ACK,NULL,0,pMsg->srcnode);
+                                     NextState(RUNNING_STATE);
+                                }
+                                break;
+
                         }
                 }
                         break;
                 case RUNNING_STATE:
+                        switch(curEvent){
+                                case FILE_UPLOAD:{
+                                     FILE *file;
+                                     size_t buffer_size;
+
+                                     if(!(file = fopen("test_file_name","wb"))){
+                                             printf("open file error\n");
+                                             break;
+                                     }
+
+                                     //TODO:增加缓冲
+                                     buffer_size = fwrite(pMsg->content,1,sizeof(char)*pMsg->length,file);
+                                   //TODO:需要增加返回信息，为客户端文件传送进度显示做依据。
+                                     printf("get files\n");
+                                     fclose(file);
+                                }
+                                break;
+                        }
                         break;
                 default:
                         break;
@@ -94,7 +126,7 @@ printf("get sign out\n");
                       post(pcMsg->srcid,SIGN_OUT_ACK,NULL,0,pcMsg->srcnode);
                       OspLog(SYS_LOG_LEVEL,"sign out\n");
                       OspPrintf(1,1,"sign out\n");
-                 }
+                }
                  break;
 
          }
