@@ -44,18 +44,24 @@ void CSInstance::InstanceEntry(CMessage * const pMsg){
         switch(curState){
                 case IDLE_STATE:{
                         switch(curEvent){
-                                case SERVER_CONNECT_TEST:{
-                                        OspPrintf(1,0,"connect sucessfully\n");
-                                }
-                                break;
                                 case FILE_NAME_SEND:{
-                                     if(pMsg->length > MAX_FILE_NAME_LENGTH-1){
-                                             OspLog(LOG_LVL_ERROR,"[InstanceEntry] file name length error\n");
-                                             OspPrintf(1,0,"file name length error\n");
+                                     if(pMsg->length > MAX_FILE_NAME_LENGTH-1 ||
+                                                     pMsg->length <= 0 || !pMsg->content){
+                                             OspLog(LOG_LVL_ERROR,"[InstanceEntry] file name error\n");
                                      }
                                      strcpy((char*)FileName,(const char*)pMsg->content);
+                                     size_t buffer_size;
+
+                                     if(!(file = fopen((LPCSTR)FileName,"wb"))){
+                                             //TODO:通知客户端
+                                             OspLog(LOG_LVL_ERROR,"file open error\n");
+                                             printf("open file error\n");
+                                             break;
+                                     }
+
                                      post(pMsg->srcid,FILE_NAME_ACK,NULL,0,pMsg->srcnode);
                                      NextState(RUNNING_STATE);
+                                     printf("file name send\n");
                                 }
                                 break;
 
@@ -65,21 +71,35 @@ void CSInstance::InstanceEntry(CMessage * const pMsg){
                 case RUNNING_STATE:
                         switch(curEvent){
                                 case FILE_UPLOAD:{
-                                     FILE *file;
-                                     size_t buffer_size;
-
-                                     if(!(file = fopen("test_file_name","wb"))){
-                                             printf("open file error\n");
-                                             break;
-                                     }
 
                                      //TODO:增加缓冲
-                                     buffer_size = fwrite(pMsg->content,1,sizeof(char)*pMsg->length,file);
+                                     if(fwrite(pMsg->content,1,sizeof(char)*pMsg->length,file)
+                                                     != pMsg->length || ferror(file)){
+                                             OspLog(LOG_LVL_ERROR,"file upload write error\n");
+                                             //TODO:通知客户端
+                                             break;
+                                     };
                                    //TODO:需要增加返回信息，为客户端文件传送进度显示做依据。
                                      printf("get files\n");
-                                     fclose(file);
+                                     post(pMsg->srcid,FILE_UPLOAD_ACK,NULL,0,pMsg->srcnode);
+                                     printf("file upload\n");
                                 }
                                 break;
+#if 1
+                                case FILE_FINISH:{
+
+                                     if(fwrite(pMsg->content,1,sizeof(char)*pMsg->length,file)
+                                                     != pMsg->length || ferror(file)){
+                                             OspLog(LOG_LVL_ERROR,"file upload write error\n");
+                                             //TODO:通知客户端
+                                             break;
+                                     };
+                                     fclose(file);
+                                     post(pMsg->srcid,FILE_FINISH_ACK,NULL,0,pMsg->srcnode);
+                                     NextState(IDLE_STATE);
+                                }
+                                break;
+#endif
                         }
                         break;
                 default:

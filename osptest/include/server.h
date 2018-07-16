@@ -28,6 +28,7 @@ private:
 private:
         TSinInfo g_tSinInfo;
         u8      FileName[MAX_FILE_NAME_LENGTH];
+        FILE *file;
 public:
         CSInstance(){
                 strcpy((char*)g_tSinInfo.g_Username,"admin");

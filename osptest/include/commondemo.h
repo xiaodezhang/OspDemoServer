@@ -45,6 +45,12 @@ const u8 MAX_ALIAS_LENGTH = 20;
 #define FILE_NAME_SEND               (EV_CLIENT_TEST_BGN+9)
 #define FILE_NAME_ACK                (EV_CLIENT_TEST_BGN+10)
 
+#define FILE_UPLOAD_CMD              (EV_CLIENT_TEST_BGN+11)
+#define FILE_UPLOAD_ACK              (EV_CLIENT_TEST_BGN+12)
+#define FILE_FINISH                  (EV_CLIENT_TEST_BGN+13)
+#define FILE_FINISH_ACK              (EV_CLIENT_TEST_BGN+14)
+
+
 
 
 #endif /*_COMMON_DEMO_H*/
