@@ -1,6 +1,7 @@
 #include"osp.h"
 #include"server.h"
 
+#define MAKEESTATE(state,event) ((u32)(event<< 4 +state))
 
 CSApp g_cCSApp;
 
@@ -40,119 +41,37 @@ void CSInstance::InstanceEntry(CMessage * const pMsg){
 
         u32 curState = CurState();
         u16 curEvent = pMsg->event;
+        MsgProcess c_MsgProcess;
 
-        switch(curState){
-                case IDLE_STATE:{
-                        switch(curEvent){
-                                case FILE_NAME_SEND:{
-                                     if(pMsg->length > MAX_FILE_NAME_LENGTH-1 ||
-                                                     pMsg->length <= 0 || !pMsg->content){
-                                             OspLog(LOG_LVL_ERROR,"[InstanceEntry] file name error\n");
-                                     }
-                                     strcpy((char*)FileName,(const char*)pMsg->content);
-                                     size_t buffer_size;
 
-                                     if(!(file = fopen((LPCSTR)FileName,"wb"))){
-                                             //TODO:通知客户端
-                                             OspLog(LOG_LVL_ERROR,"file open error\n");
-                                             printf("open file error\n");
-                                             break;
-                                     }
-
-                                     post(pMsg->srcid,FILE_NAME_ACK,NULL,0,pMsg->srcnode);
-                                     NextState(RUNNING_STATE);
-                                     printf("file name send\n");
-                                }
-                                break;
-
-                        }
-                }
-                        break;
-                case RUNNING_STATE:
-                        switch(curEvent){
-                                case FILE_UPLOAD:{
-
-                                     //TODO:增加缓冲
-                                     if(fwrite(pMsg->content,1,sizeof(char)*pMsg->length,file)
-                                                     != pMsg->length || ferror(file)){
-                                             OspLog(LOG_LVL_ERROR,"file upload write error\n");
-                                             //TODO:通知客户端
-                                             break;
-                                     };
-                                   //TODO:需要增加返回信息，为客户端文件传送进度显示做依据。
-                                     printf("get files\n");
-                                     post(pMsg->srcid,FILE_UPLOAD_ACK,NULL,0,pMsg->srcnode);
-                                     printf("file upload\n");
-                                }
-                                break;
-#if 1
-                                case FILE_FINISH:{
-
-                                     if(fwrite(pMsg->content,1,sizeof(char)*pMsg->length,file)
-                                                     != pMsg->length || ferror(file)){
-                                             OspLog(LOG_LVL_ERROR,"file upload write error\n");
-                                             //TODO:通知客户端
-                                             break;
-                                     };
-                                     fclose(file);
-                                     post(pMsg->srcid,FILE_FINISH_ACK,NULL,0,pMsg->srcnode);
-                                     NextState(IDLE_STATE);
-                                }
-                                break;
-#endif
-                        }
-                        break;
-                default:
-                        break;
+        if(FindProcess(MAKEESTATE(curState,curEvent),&c_MsgProcess,m_tCmdChain)){
+                (this->*c_MsgProcess)(pMsg);
+        }else{
+                OspLog(LOG_LVL_ERROR,"[InstanceEntry] can not find the EState\n");
+                printf("[InstanceEntry] can not find the EState\n");
         }
 
-        OspPrintf(1,0,"instance entry\n");
 }
 
-void CSInstance::DaemonInstanceEntry(CMessage * const pcMsg,CApp *pCApp){
+void CSInstance::DaemonInstanceEntry(CMessage *const pMsg,CApp *pCApp){
 
-	if (NULL == pcMsg) {
-		OspLog(LOG_LVL_ERROR, "[CCltInstance::DaemonInstanceEntry] NULL == pcMsg.\n");
-		return;
-	}
-	if (NULL == pCApp) {
-		OspLog(LOG_LVL_ERROR, "[CCltInstance::DaemonInstanceEntry] NULL == pCApp.\n");
-		return;
-	}
+        if(NULL == pMsg){
+                OspLog(LOG_LVL_ERROR,"[InstanceEntry] pMsg is NULL\n");
+        }
 
-	u32 dwcurState = CurState();
-	u16 wEvent = pcMsg->event;
-	CSInstance *pCSInstance = NULL;
+        u32 curState = CurState();
+        u16 curEvent = pMsg->event;
+        MsgProcess c_MsgProcess;
 
-         switch(wEvent){
-                 case SIGN_IN:{
-                       if(CheckAuthorization((TSinInfo*)pcMsg->content,pcMsg->length)){
-                               if(OSP_OK != post(pcMsg->srcid,SIGN_IN_ACK,"succeed"
-                                     ,strlen("succeed"),pcMsg->srcnode)){
-                                       OspPrintf(1,0,"post back failed\n");
-                                       printf("post back failed\n");
-                               }
-                               OspLog(SYS_LOG_LEVEL,"sign in\n");
-                               OspPrintf(1,1,"sign in\n");
-                       }else{
-                               post(pcMsg->srcid,SIGN_IN_ACK,"failed",strlen("failed"),pcMsg->srcnode);
-                               OspLog(SYS_LOG_LEVEL,"sign in failed\n");
-                               OspPrintf(1,1,"sign in failed\n");
-                       }
-                 }
-                 break;
-                 case SIGN_OUT:{
-printf("get sign out\n");
-                      post(pcMsg->srcid,SIGN_OUT_ACK,NULL,0,pcMsg->srcnode);
-                      OspLog(SYS_LOG_LEVEL,"sign out\n");
-                      OspPrintf(1,1,"sign out\n");
-                }
-                 break;
 
-         }
+        if(FindProcess(MAKEESTATE(curState,curEvent),&c_MsgProcess,m_tCmdDaemonChain)){
+                (this->*c_MsgProcess)(pMsg);
+        }else{
+                OspLog(LOG_LVL_ERROR,"[InstanceEntry] can not find the EState\n");
+                printf("[InstanceEntry] can not find the EState\n");
+        }
 
 }
-
 
 bool CSInstance::CheckAuthorization(TSinInfo *tSinInfo,u32 dwLen){
 
@@ -172,4 +91,164 @@ bool CSInstance::CheckAuthorization(TSinInfo *tSinInfo,u32 dwLen){
                 OspPrintf(1,0,"user not authorized\n");
                 return false;
         }
+}
+
+
+void CSInstance::MsgProcessInit(){
+
+       //Daemon Instance
+        RegMsgProFun(MAKEESTATE(IDLE_STATE,SIGN_IN),&CSInstance::SignIn,&m_tCmdDaemonChain);
+        RegMsgProFun(MAKEESTATE(IDLE_STATE,SIGN_OUT),&CSInstance::SignOut,&m_tCmdDaemonChain);
+
+
+      //common Instance
+        RegMsgProFun(MAKEESTATE(IDLE_STATE,FILE_NAME_SEND),&CSInstance::FileNameSend,&m_tCmdChain);
+        RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_UPLOAD),&CSInstance::FileUpload,&m_tCmdChain);
+        RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_FINISH),&CSInstance::FileFinish,&m_tCmdChain);
+}
+
+void CSInstance::NodeChainEnd(){
+
+        while(m_tCmdChain){
+                free(m_tCmdChain);
+                m_tCmdChain = m_tCmdChain->next;
+        }
+
+        while(m_tCmdDaemonChain){
+                free(m_tCmdDaemonChain);
+                m_tCmdDaemonChain = m_tCmdDaemonChain->next;
+        }
+}
+
+bool CSInstance::RegMsgProFun(u32 EventState,MsgProcess c_MsgProcess,tCmdNode** tppNodeChain){
+
+        tCmdNode *Node,*NewNode,*LNode;
+
+        Node = *tppNodeChain;
+
+        if(!(NewNode = (tCmdNode*)malloc(sizeof(tCmdNode)))){
+                OspLog(LOG_LVL_ERROR,"[RegMsgProFun] node malloc error\n");
+                return false;
+        }
+
+        NewNode->EventState = EventState;
+        NewNode->c_MsgProcess = c_MsgProcess;
+        NewNode->next = NULL;
+
+        if(!Node){
+                *tppNodeChain = NewNode;
+                OspLog(SYS_LOG_LEVEL,"cmd chain init \n");
+                return true;
+        }
+
+        while(Node){
+                if(Node->EventState == EventState){
+                        OspLog(LOG_LVL_ERROR,"[RegMsgProFun] node already in \n");
+                        printf("[RegMsgProFun] node already in \n");
+                        return false;
+                }
+                LNode = Node;
+                Node = Node->next;
+        }
+        LNode->next = NewNode;
+
+        return true;
+}
+
+bool CSInstance::FindProcess(u32 EventState,MsgProcess* c_MsgProcess,tCmdNode* tNodeChain){
+
+        tCmdNode *Node;
+
+        Node = tNodeChain;
+        if(!Node){
+                OspLog(LOG_LVL_ERROR,"[FindProcess] Node Chain is NULL\n");
+                printf("[FindProcess] Node Chain is NULL\n");
+                return false;
+        }
+        while(Node){
+
+                if(Node->EventState == EventState){
+                        *c_MsgProcess = Node->c_MsgProcess;
+                        return true;
+                }
+                Node = Node->next;
+        }
+
+        return false;
+}
+
+void CSInstance::SignIn(CMessage *const pcMsg){
+
+       if(CheckAuthorization((TSinInfo*)pcMsg->content,pcMsg->length)){
+               if(OSP_OK != post(pcMsg->srcid,SIGN_IN_ACK,"succeed"
+                     ,strlen("succeed"),pcMsg->srcnode)){
+                       OspPrintf(1,0,"post back failed\n");
+                       printf("post back failed\n");
+               }
+               OspLog(SYS_LOG_LEVEL,"sign in\n");
+               OspPrintf(1,1,"sign in\n");
+       }else{
+               post(pcMsg->srcid,SIGN_IN_ACK,"failed",strlen("failed"),pcMsg->srcnode);
+               OspLog(SYS_LOG_LEVEL,"sign in failed\n");
+               OspPrintf(1,1,"sign in failed\n");
+       }
+}
+
+void CSInstance::SignOut(CMessage* const pcMsg){
+
+      post(pcMsg->srcid,SIGN_OUT_ACK,NULL,0,pcMsg->srcnode);
+      OspLog(SYS_LOG_LEVEL,"sign out\n");
+      OspPrintf(1,1,"sign out\n");
+}
+
+void CSInstance::FileNameSend(CMessage* const pMsg){
+
+     if(pMsg->length > MAX_FILE_NAME_LENGTH-1 ||
+                     pMsg->length <= 0 || !pMsg->content){
+             OspLog(LOG_LVL_ERROR,"[InstanceEntry] file name error\n");
+     }
+     strcpy((char*)FileName,(const char*)pMsg->content);
+     size_t buffer_size;
+
+     if(!(file = fopen((LPCSTR)FileName,"wb"))){
+             //TODO:通知客户端
+             OspLog(LOG_LVL_ERROR,"file open error\n");
+             printf("open file error\n");
+             return;
+     }
+
+     post(pMsg->srcid,FILE_NAME_ACK,NULL,0,pMsg->srcnode);
+     NextState(RUNNING_STATE);
+     printf("file name send\n");
+}
+
+
+void CSInstance::FileUpload(CMessage* const pMsg){
+
+     //TODO:增加缓冲
+     if(fwrite(pMsg->content,1,sizeof(char)*pMsg->length,file)
+                     != pMsg->length || ferror(file)){
+             OspLog(LOG_LVL_ERROR,"file upload write error\n");
+             //TODO:通知客户端
+             return;
+     };
+     //TODO:需要增加返回信息，为客户端文件传送进度显示做依据。
+     printf("get files\n");
+     post(pMsg->srcid,FILE_UPLOAD_ACK,NULL,0,pMsg->srcnode);
+     printf("file upload\n");
+
+}
+
+void CSInstance::FileFinish(CMessage* const pMsg){
+
+     if(fwrite(pMsg->content,1,sizeof(char)*pMsg->length,file)
+                     != pMsg->length || ferror(file)){
+             OspLog(LOG_LVL_ERROR,"file upload write error\n");
+             //TODO:通知客户端
+             return;
+     };
+     OspLog(SYS_LOG_LEVEL,"file finished\n");
+     fclose(file);
+     post(pMsg->srcid,FILE_FINISH_ACK,NULL,0,pMsg->srcnode);
+     NextState(IDLE_STATE);
 }
