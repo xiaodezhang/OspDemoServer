@@ -5,7 +5,7 @@
 
 CSApp g_cCSApp;
 
-char buffer[BUFFER_SIZE];
+s8 buffer[BUFFER_SIZE];
 int main(){
 
 #ifdef _MSC_VER
@@ -105,6 +105,10 @@ void CSInstance::MsgProcessInit(){
         RegMsgProFun(MAKEESTATE(IDLE_STATE,FILE_NAME_SEND),&CSInstance::FileNameSend,&m_tCmdChain);
         RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_UPLOAD),&CSInstance::FileUpload,&m_tCmdChain);
         RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_FINISH),&CSInstance::FileFinish,&m_tCmdChain);
+        RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_CANCEL),&CSInstance::FileCancel,&m_tCmdChain);
+        RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_REMOVE),&CSInstance::FileRemove,&m_tCmdChain);
+        RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_RECEIVE_REMOVE),&CSInstance::ReceiveRemove,&m_tCmdChain);
+        RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_RECEIVE_CANCEL),&CSInstance::ReceiveCancel,&m_tCmdChain);
 }
 
 void CSInstance::NodeChainEnd(){
@@ -179,16 +183,26 @@ bool CSInstance::FindProcess(u32 EventState,MsgProcess* c_MsgProcess,tCmdNode* t
 
 void CSInstance::SignIn(CMessage *const pcMsg){
 
+       if(!pcMsg->content || pcMsg->length <= 0){
+               //通知客户端
+                OspLog(LOG_LVL_ERROR,"[SignIn] pMsg is NULL\n");
+                return;
+       }
+      //TODO:客户端状态维护
        if(CheckAuthorization((TSinInfo*)pcMsg->content,pcMsg->length)){
                if(OSP_OK != post(pcMsg->srcid,SIGN_IN_ACK,"succeed"
-                     ,strlen("succeed"),pcMsg->srcnode)){
+                     ,strlen("succeed")+1,pcMsg->srcnode)){
                        OspPrintf(1,0,"post back failed\n");
                        printf("post back failed\n");
                }
                OspLog(SYS_LOG_LEVEL,"sign in\n");
                OspPrintf(1,1,"sign in\n");
        }else{
-               post(pcMsg->srcid,SIGN_IN_ACK,"failed",strlen("failed"),pcMsg->srcnode);
+               if(OSP_OK != post(pcMsg->srcid,SIGN_IN_ACK,"failed"
+                                       ,strlen("failed")+1,pcMsg->srcnode)){
+                       OspPrintf(1,0,"post back failed\n");
+                       printf("post back failed\n");
+               }
                OspLog(SYS_LOG_LEVEL,"sign in failed\n");
                OspPrintf(1,1,"sign in failed\n");
        }
@@ -196,28 +210,49 @@ void CSInstance::SignIn(CMessage *const pcMsg){
 
 void CSInstance::SignOut(CMessage* const pcMsg){
 
-      post(pcMsg->srcid,SIGN_OUT_ACK,NULL,0,pcMsg->srcnode);
+      //TODO:客户端状态维护
+      if(OSP_OK != post(pcMsg->srcid,SIGN_OUT_ACK,NULL
+            ,0,pcMsg->srcnode)){
+              OspPrintf(1,0,"post back failed\n");
+              printf("post back failed\n");
+      }
       OspLog(SYS_LOG_LEVEL,"sign out\n");
       OspPrintf(1,1,"sign out\n");
 }
 
 void CSInstance::FileNameSend(CMessage* const pMsg){
 
+     if(!pMsg->content || pMsg->length <= 0){
+             OspLog(LOG_LVL_ERROR,"[FileNameSend]file name is NULL\n");
+             //TODO:通知客户端
+             return;
+     }
+     if(strlen((LPCSTR)pMsg->content)+1 != pMsg->length){
+         OspLog(LOG_LVL_ERROR,"[FileNameSend]file name error\n");
+             //TODO:通知客户端
+             return;
+     }
      if(pMsg->length > MAX_FILE_NAME_LENGTH-1 ||
                      pMsg->length <= 0 || !pMsg->content){
              OspLog(LOG_LVL_ERROR,"[InstanceEntry] file name error\n");
+             //TODO:通知客户端
+             return;
      }
-     strcpy((char*)FileName,(const char*)pMsg->content);
-     size_t buffer_size;
 
-     if(!(file = fopen((LPCSTR)FileName,"wb"))){
+     memcpy(file_name_path,pMsg->content,pMsg->length);
+     if(!(file = fopen((LPCSTR)pMsg->content,"wb"))){
              //TODO:通知客户端
              OspLog(LOG_LVL_ERROR,"file open error\n");
              printf("open file error\n");
              return;
      }
 
-     post(pMsg->srcid,FILE_NAME_ACK,NULL,0,pMsg->srcnode);
+     if(OSP_OK != post(pMsg->srcid,FILE_NAME_ACK,NULL
+           ,0,pMsg->srcnode)){
+             OspPrintf(1,0,"post back failed\n");
+             printf("post back failed\n");
+     }
+
      NextState(RUNNING_STATE);
      printf("file name send\n");
 }
@@ -226,29 +261,105 @@ void CSInstance::FileNameSend(CMessage* const pMsg){
 void CSInstance::FileUpload(CMessage* const pMsg){
 
      //TODO:增加缓冲
-     if(fwrite(pMsg->content,1,sizeof(char)*pMsg->length,file)
-                     != pMsg->length || ferror(file)){
-             OspLog(LOG_LVL_ERROR,"file upload write error\n");
-             //TODO:通知客户端
-             return;
-     };
+     if(pMsg->content && pMsg->length > 0){
+             if(fwrite(pMsg->content,1,sizeof(s8)*pMsg->length,file)
+                             != pMsg->length || ferror(file)){
+                     OspLog(LOG_LVL_ERROR,"file upload write error\n");
+                     //TODO:通知客户端
+                     return;
+             };
+     }
      //TODO:需要增加返回信息，为客户端文件传送进度显示做依据。
      printf("get files\n");
-     post(pMsg->srcid,FILE_UPLOAD_ACK,NULL,0,pMsg->srcnode);
-     printf("file upload\n");
+     if(OSP_OK != post(pMsg->srcid,FILE_NAME_ACK,&emFileStatus
+           ,sizeof(emFileStatus),pMsg->srcnode)){
+             OspPrintf(1,0,"post back failed\n");
+             printf("post back failed\n");
+     }
 
+}
+
+void CSInstance::FileRemove(CMessage* const pMsg){
+
+        if(emFileStatus < CANCELED){
+                if(fclose(file) == 0){
+                        OspLog(SYS_LOG_LEVEL,"[FileRemove]file closed\n");
+
+                }else{
+                        OspLog(LOG_LVL_ERROR,"[FileRemove]file close failed\n");
+                        //TODO：通知客户端
+                        return;
+                }
+        }
+#ifdef _LINUX_
+        if(unlink((LPCSTR)file_name_path) == 0){
+                OspLog(SYS_LOG_LEVEL,"[FileRemove]file removed\n");
+                if(OSP_OK != post(pMsg->srcid,FILE_REMOVE_ACK,"succeed"
+                      ,strlen("succeed")+1,pMsg->srcnode)){
+                        OspPrintf(1,0,"post back failed\n");
+                        printf("post back failed\n");
+                }
+        }else{
+                OspLog(LOG_LVL_ERROR,"[FileRemove]file remove failed\n");
+                //TODO：通知客户端
+        }
+#endif
+}
+void CSInstance::ReceiveCancel(CMessage* const pMsg){
+
+        emFileStatus = RECEIVE_CANCEL;
+}
+
+void CSInstance::ReceiveRemove(CMessage* const pMsg){
+
+        emFileStatus = RECEIVE_REMOVE;
+}
+
+void CSInstance::FileCancel(CMessage* const pMsg){
+
+        //保存为临时文件，
+        if(fclose(file) == 0){
+                OspLog(SYS_LOG_LEVEL,"[FileRemove]file closed\n");
+
+        }else{
+                OspLog(LOG_LVL_ERROR,"[FileRemove]file close failed\n");
+                //TODO：通知客户端
+                return;
+        }
+        emFileStatus = CANCELED;
 }
 
 void CSInstance::FileFinish(CMessage* const pMsg){
 
-     if(fwrite(pMsg->content,1,sizeof(char)*pMsg->length,file)
-                     != pMsg->length || ferror(file)){
-             OspLog(LOG_LVL_ERROR,"file upload write error\n");
-             //TODO:通知客户端
-             return;
-     };
+     if(pMsg->content && pMsg->length > 0){
+             if(fwrite(pMsg->content,1,sizeof(s8)*pMsg->length,file)
+                             != pMsg->length || ferror(file)){
+                     OspLog(LOG_LVL_ERROR,"file upload write error\n");
+                     NextState(IDLE_STATE);
+                     if(fclose(file) == 0){
+                             OspLog(SYS_LOG_LEVEL,"[FileRemove]file closed\n");
+
+                     }else{
+                             OspLog(LOG_LVL_ERROR,"[FileRemove]file close failed\n");
+                             //TODO：通知客户端
+                     }
+                     //TODO:通知客户端
+                     return;
+             }
+     }
      OspLog(SYS_LOG_LEVEL,"file finished\n");
-     fclose(file);
-     post(pMsg->srcid,FILE_FINISH_ACK,NULL,0,pMsg->srcnode);
+     if(fclose(file) == 0){
+             OspLog(SYS_LOG_LEVEL,"[FileRemove]file closed\n");
+
+     }else{
+             OspLog(LOG_LVL_ERROR,"[FileRemove]file close failed\n");
+             //TODO：通知客户端
+     }
+     if(OSP_OK != post(pMsg->srcid,FILE_FINISH_ACK,NULL
+           ,0,pMsg->srcnode)){
+             OspPrintf(1,0,"post back failed\n");
+             printf("post back failed\n");
+     }
      NextState(IDLE_STATE);
+     emFileStatus = FINISHED;
 }

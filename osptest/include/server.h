@@ -1,19 +1,27 @@
 #include"osp.h"
 #include"commondemo.h"
+#ifdef _LINUX_
+#include<unistd.h>
+#endif
 
-#define OSP_AGENT_SERVER_PORT 20000
+#define OSP_AGENT_SERVER_PORT              20000
 
-#define RUNNING_STATE         1
-#define IDLE_STATE            0
-#define EV_CLIENT_TEST_BGN           (u16)0x1111
-#define SERVER_CONNECT_TEST          (EV_CLIENT_TEST_BGN+1)
-#define AUTHORIZATION_NAME_SIZE      20
+#define RUNNING_STATE                      1
+#define IDLE_STATE                         0
+#define EV_CLIENT_TEST_BGN                (u16)0x1111
+#define SERVER_CONNECT_TEST               (EV_CLIENT_TEST_BGN+1)
+#define AUTHORIZATION_NAME_SIZE            20
 
-#define BUFFER_SIZE                  MAX_MSG_LEN
-#define MAX_FILE_NAME_LENGTH         200
+#define BUFFER_SIZE                       (u16)(MAX_MSG_LEN >> 1)
+#define MAX_FILE_NAME_LENGTH               200
 
-const u8 SERVER_APP_PRI    =            80;
-const u32 MAX_MSG_WAITING  =            512;
+#define FILE_RECEIVE_REMOVE               (EV_CLIENT_TEST_BGN+17)
+#define FILE_RECEIVE_CANCEL               (EV_CLIENT_TEST_BGN+18)
+#define FILE_REMOVE_ACK                   (EV_CLIENT_TEST_BGN+19)
+
+
+const u8 SERVER_APP_PRI                  = 80;
+const u32 MAX_MSG_WAITING                = 512;
 
 typedef struct tagSinInfo{
         s8 g_Username[AUTHORIZATION_NAME_SIZE];
@@ -35,18 +43,28 @@ private:
         struct      tagCmdNode *next;
         }tCmdNode;
 
+        typedef enum tagEM_FILE_STATUS{
+                GO_ON_SEND       = 0,
+                RECEIVE_CANCEL   = 1,
+                RECEIVE_REMOVE   = 2,
+                CANCELED         = 3,
+                REMOVED          = 4,
+                FINISHED         = 5
+        }EM_FILE_STATUS;
+
+        EM_FILE_STATUS emFileStatus;
+
         TSinInfo g_tSinInfo;
-        u8      FileName[MAX_FILE_NAME_LENGTH];
         FILE *file;
         tCmdNode *m_tCmdChain;
         tCmdNode *m_tCmdDaemonChain;
+        u8       file_name_path[MAX_FILE_NAME_LENGTH];
 
 public:
-        CSInstance():file(NULL)
+        CSInstance():file(NULL),emFileStatus(GO_ON_SEND)
                      ,m_tCmdChain(NULL),m_tCmdDaemonChain(NULL){
-                strcpy((char*)g_tSinInfo.g_Username,"admin");
-                strcpy((char*)g_tSinInfo.g_Passwd,"admin");
-                memset(FileName,0,sizeof(u8)*MAX_FILE_NAME_LENGTH);
+                strcpy((LPSTR)g_tSinInfo.g_Username,"admin");
+                strcpy((LPSTR)g_tSinInfo.g_Passwd,"admin");
                 MsgProcessInit();
         };
         ~CSInstance(){
@@ -63,6 +81,10 @@ public:
         void FileNameSend(CMessage* const);
         void FileUpload(CMessage* const);
         void FileFinish(CMessage* const);
+        void FileRemove(CMessage* const);
+        void FileCancel(CMessage* const);
+        void ReceiveRemove(CMessage* const);
+        void ReceiveCancel(CMessage* const);
 
 };
 
