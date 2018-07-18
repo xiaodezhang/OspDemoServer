@@ -271,7 +271,7 @@ void CSInstance::FileUpload(CMessage* const pMsg){
      }
      //TODO:需要增加返回信息，为客户端文件传送进度显示做依据。
      printf("get files\n");
-     if(OSP_OK != post(pMsg->srcid,FILE_NAME_ACK,&emFileStatus
+     if(OSP_OK != post(pMsg->srcid,FILE_UPLOAD_ACK,&emFileStatus
            ,sizeof(emFileStatus),pMsg->srcnode)){
              OspPrintf(1,0,"post back failed\n");
              printf("post back failed\n");
@@ -307,11 +307,14 @@ void CSInstance::FileRemove(CMessage* const pMsg){
 }
 void CSInstance::ReceiveCancel(CMessage* const pMsg){
 
+        OspLog(SYS_LOG_LEVEL,"[ReceiveCancel]receive cancel msg\n");
         emFileStatus = RECEIVE_CANCEL;
 }
 
 void CSInstance::ReceiveRemove(CMessage* const pMsg){
 
+
+        OspLog(SYS_LOG_LEVEL,"[ReceiveRemove]receive remove msg\n");
         emFileStatus = RECEIVE_REMOVE;
 }
 
