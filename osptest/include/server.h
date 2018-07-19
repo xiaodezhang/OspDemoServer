@@ -18,6 +18,10 @@
 #define FILE_RECEIVE_REMOVE               (EV_CLIENT_TEST_BGN+17)
 #define FILE_RECEIVE_CANCEL               (EV_CLIENT_TEST_BGN+18)
 #define FILE_REMOVE_ACK                   (EV_CLIENT_TEST_BGN+19)
+#define FILE_CANCEL_ACK                   (EV_CLIENT_TEST_BGN+20)
+
+#define FILE_GO_ON                        (EV_CLIENT_TEST_BGN+24)
+#define FILE_GO_ON_ACK                    (EV_CLIENT_TEST_BGN+25)
 
 
 const u8 SERVER_APP_PRI                  = 80;
@@ -65,6 +69,7 @@ public:
                      ,m_tCmdChain(NULL),m_tCmdDaemonChain(NULL){
                 strcpy((LPSTR)g_tSinInfo.g_Username,"admin");
                 strcpy((LPSTR)g_tSinInfo.g_Passwd,"admin");
+                memset(file_name_path,0,sizeof(u8)*MAX_FILE_NAME_LENGTH);
                 MsgProcessInit();
         };
         ~CSInstance(){
@@ -85,6 +90,7 @@ public:
         void FileCancel(CMessage* const);
         void ReceiveRemove(CMessage* const);
         void ReceiveCancel(CMessage* const);
+        void FileGoOn(CMessage* const);
 
 };
 

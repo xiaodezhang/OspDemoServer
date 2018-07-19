@@ -109,6 +109,7 @@ void CSInstance::MsgProcessInit(){
         RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_REMOVE),&CSInstance::FileRemove,&m_tCmdChain);
         RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_RECEIVE_REMOVE),&CSInstance::ReceiveRemove,&m_tCmdChain);
         RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_RECEIVE_CANCEL),&CSInstance::ReceiveCancel,&m_tCmdChain);
+        RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_GO_ON),&CSInstance::FileGoOn,&m_tCmdChain);
 }
 
 void CSInstance::NodeChainEnd(){
@@ -276,7 +277,37 @@ void CSInstance::FileUpload(CMessage* const pMsg){
              OspPrintf(1,0,"post back failed\n");
              printf("post back failed\n");
      }
+}
 
+
+void CSInstance::ReceiveCancel(CMessage* const pMsg){
+
+        OspLog(SYS_LOG_LEVEL,"[ReceiveCancel]receive cancel msg\n");
+        emFileStatus = RECEIVE_CANCEL;
+}
+
+void CSInstance::ReceiveRemove(CMessage* const pMsg){
+
+
+        OspLog(SYS_LOG_LEVEL,"[ReceiveRemove]receive remove msg\n");
+        emFileStatus = RECEIVE_REMOVE;
+}
+
+void CSInstance::FileGoOn(CMessage* const pMsg){
+
+        if(OSP_OK != post(pMsg->srcid,FILE_GO_ON_ACK,NULL
+              ,0,pMsg->srcnode)){
+                OspPrintf(1,0,"post back failed\n");
+                printf("post back failed\n");
+                return;
+        }
+        if(!(file = fopen((LPCSTR)file_name_path,"ab"))){
+                //TODO:通知客户端
+                OspLog(LOG_LVL_ERROR,"file open error\n");
+                printf("open file error\n");
+                return;
+        }
+        emFileStatus = GO_ON_SEND;
 }
 
 void CSInstance::FileRemove(CMessage* const pMsg){
@@ -294,10 +325,11 @@ void CSInstance::FileRemove(CMessage* const pMsg){
 #ifdef _LINUX_
         if(unlink((LPCSTR)file_name_path) == 0){
                 OspLog(SYS_LOG_LEVEL,"[FileRemove]file removed\n");
-                if(OSP_OK != post(pMsg->srcid,FILE_REMOVE_ACK,"succeed"
-                      ,strlen("succeed")+1,pMsg->srcnode)){
-                        OspPrintf(1,0,"post back failed\n");
-                        printf("post back failed\n");
+                emFileStatus = REMOVED;
+                if(OSP_OK != post(pMsg->srcid,FILE_REMOVE_ACK
+                                    ,&emFileStatus,sizeof(emFileStatus),pMsg->srcnode)){
+                        OspPrintf(1,0,"[FileRemove]post back failed\n");
+                        printf("[FileRemove]post back failed\n");
                 }
         }else{
                 OspLog(LOG_LVL_ERROR,"[FileRemove]file remove failed\n");
@@ -305,31 +337,24 @@ void CSInstance::FileRemove(CMessage* const pMsg){
         }
 #endif
 }
-void CSInstance::ReceiveCancel(CMessage* const pMsg){
-
-        OspLog(SYS_LOG_LEVEL,"[ReceiveCancel]receive cancel msg\n");
-        emFileStatus = RECEIVE_CANCEL;
-}
-
-void CSInstance::ReceiveRemove(CMessage* const pMsg){
-
-
-        OspLog(SYS_LOG_LEVEL,"[ReceiveRemove]receive remove msg\n");
-        emFileStatus = RECEIVE_REMOVE;
-}
 
 void CSInstance::FileCancel(CMessage* const pMsg){
 
         //保存为临时文件，
         if(fclose(file) == 0){
-                OspLog(SYS_LOG_LEVEL,"[FileRemove]file closed\n");
+                OspLog(SYS_LOG_LEVEL,"[FileCancel]file closed\n");
 
         }else{
-                OspLog(LOG_LVL_ERROR,"[FileRemove]file close failed\n");
+                OspLog(LOG_LVL_ERROR,"[FileCancel]file close failed\n");
                 //TODO：通知客户端
                 return;
         }
         emFileStatus = CANCELED;
+        if(OSP_OK != post(pMsg->srcid,FILE_CANCEL_ACK
+                            ,&emFileStatus,sizeof(emFileStatus),pMsg->srcnode)){
+                OspPrintf(1,0,"[FileCancel]post back failed\n");
+                printf("[FileCancel]post back failed\n");
+        }
 }
 
 void CSInstance::FileFinish(CMessage* const pMsg){
