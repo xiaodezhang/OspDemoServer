@@ -84,12 +84,10 @@ bool CSInstance::CheckAuthorization(TSinInfo *tSinInfo,u32 dwLen){
         if(0 == strcmp(g_tSinInfo.g_Username,tSinInfo->g_Username)
                         && 0 == strcmp(g_tSinInfo.g_Passwd,tSinInfo->g_Passwd)){
                 OspLog(SYS_LOG_LEVEL,"user authorized\n");
-                OspPrintf(1,0,"user authorized\n");
                 return true;
         }else{
                 OspPrintf(1,0,"username:%s\npassword:%s\n",g_tSinInfo.g_Username,g_tSinInfo.g_Passwd);
                 OspLog(SYS_LOG_LEVEL,"user not authorized\n");
-                OspPrintf(1,0,"user not authorized\n");
                 return false;
         }
 }
@@ -200,7 +198,6 @@ void CSInstance::SignIn(CMessage *const pcMsg){
                        printf("post back failed\n");
                }
                OspLog(SYS_LOG_LEVEL,"sign in\n");
-               OspPrintf(1,1,"sign in\n");
        }else{
                if(OSP_OK != post(pcMsg->srcid,SIGN_IN_ACK,"failed"
                                        ,strlen("failed")+1,pcMsg->srcnode)){
@@ -208,7 +205,6 @@ void CSInstance::SignIn(CMessage *const pcMsg){
                        printf("post back failed\n");
                }
                OspLog(SYS_LOG_LEVEL,"sign in failed\n");
-               OspPrintf(1,1,"sign in failed\n");
        }
 }
 
@@ -221,7 +217,6 @@ void CSInstance::SignOut(CMessage* const pcMsg){
               printf("post back failed\n");
       }
       OspLog(SYS_LOG_LEVEL,"sign out\n");
-      OspPrintf(1,1,"sign out\n");
 }
 
 void CSInstance::FileReceiveUpload(CMessage* const pMsg){
