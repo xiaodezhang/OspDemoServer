@@ -1,7 +1,27 @@
 #include"osp.h"
 #include"commondemo.h"
+
 #ifdef _LINUX_
+
 #include<unistd.h>
+#include<fcntl.h>
+
+#elif defined _MSC_VER
+
+#include<Fileapi.h>
+
+#endif
+
+#ifdef _LINUX_
+
+#define FILEHANDLE                    int
+#define INVALID_FILEHANDLE            -1
+
+#elif defined _MSC_VER
+
+#define FILEHANDLE_INIT               HANDLE
+#define INVALID_FILEHANDLE            INVALID_HANDLE_VALUE
+
 #endif
 
 #define OSP_AGENT_SERVER_PORT              20000
@@ -22,6 +42,11 @@
 
 #define FILE_GO_ON                        (EV_CLIENT_TEST_BGN+24)
 #define FILE_GO_ON_ACK                    (EV_CLIENT_TEST_BGN+25)
+#define FILE_LOCKED                       (EV_CLIENT_TEST_BGN+26)
+
+#define FILE_STABLE_REMOVE                (EV_CLIENT_TEST_BGN+27)
+#define FILE_STABLE_REMOVE_ACK            (EV_CLIENT_TEST_BGN+28)
+
 
 
 const u8 SERVER_APP_PRI                  = 80;
@@ -47,25 +72,33 @@ private:
         struct      tagCmdNode *next;
         }tCmdNode;
 
-        typedef enum tagEM_FILE_STATUS{
-                GO_ON_SEND       = 0,
-                RECEIVE_CANCEL   = 1,
-                RECEIVE_REMOVE   = 2,
-                CANCELED         = 3,
-                REMOVED          = 4,
-                FINISHED         = 5
-        }EM_FILE_STATUS;
+typedef enum tagEM_FILE_STATUS{
+                STATUS_INIT             = -1,
+                //processing state
+                STATUS_SEND_UPLOAD       = 0,
+                STATUS_SEND_CANCEL      = 1,
+                STATUS_SEND_REMOVE      = 2,
+                STATUS_RECEIVE_UPLOAD   = 3,
+                STATUS_RECEIVE_CANCEL   = 4,
+                STATUS_RECEIVE_REMOVE   = 5,
+                //stable state
+                STATUS_UPLOADING        = 6,
+                STATUS_CANCELLED        = 7,
+                STATUS_REMOVED          = 8,
+                STATUS_FINISHED         = 9 
+}EM_FILE_STATUS;
 
         EM_FILE_STATUS emFileStatus;
 
         TSinInfo g_tSinInfo;
-        FILE *file;
+//        FILE *file;
+        FILEHANDLE file;
         tCmdNode *m_tCmdChain;
         tCmdNode *m_tCmdDaemonChain;
         u8       file_name_path[MAX_FILE_NAME_LENGTH];
 
 public:
-        CSInstance():file(NULL),emFileStatus(GO_ON_SEND)
+        CSInstance():file(INVALID_FILEHANDLE),emFileStatus(STATUS_INIT)
                      ,m_tCmdChain(NULL),m_tCmdDaemonChain(NULL){
                 strcpy((LPSTR)g_tSinInfo.g_Username,"admin");
                 strcpy((LPSTR)g_tSinInfo.g_Passwd,"admin");
@@ -83,7 +116,7 @@ public:
         //注册处理函数
         void SignIn(CMessage* const);
         void SignOut(CMessage* const);
-        void FileNameSend(CMessage* const);
+        void FileReceiveUpload(CMessage* const);
         void FileUpload(CMessage* const);
         void FileFinish(CMessage* const);
         void FileRemove(CMessage* const);
@@ -91,6 +124,7 @@ public:
         void ReceiveRemove(CMessage* const);
         void ReceiveCancel(CMessage* const);
         void FileGoOn(CMessage* const);
+        void FileStableRemove(CMessage* const);
 
 };
 
