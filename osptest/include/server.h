@@ -48,6 +48,9 @@
 #define FILE_STABLE_REMOVE_ACK            (EV_CLIENT_TEST_BGN+28)
 
 
+#define FILE_RECEIVE_UPLOAD_DEAL          (EV_CLIENT_TEST_BGN+31)
+
+
 
 const u8 SERVER_APP_PRI                  = 80;
 const u32 MAX_MSG_WAITING                = 512;
@@ -56,21 +59,6 @@ typedef struct tagSinInfo{
         s8 g_Username[AUTHORIZATION_NAME_SIZE];
         s8 g_Passwd[AUTHORIZATION_NAME_SIZE];
 }TSinInfo;
-
-class CSInstance : public CInstance{
-
-public:
-        typedef void (CSInstance::*MsgProcess)(CMessage *const pMsg); 
-private:
-        void DaemonInstanceEntry(CMessage *const pcMsg,CApp *pCApp);
-        void InstanceEntry(CMessage *const);
-        bool CheckAuthorization(TSinInfo *tSinInfo,u32 dwLen);
-private:
-        typedef struct tagCmdNode{
-        u32         EventState;
-        CSInstance::MsgProcess  c_MsgProcess;
-        struct      tagCmdNode *next;
-        }tCmdNode;
 
 typedef enum tagEM_FILE_STATUS{
                 STATUS_INIT             = -1,
@@ -88,6 +76,23 @@ typedef enum tagEM_FILE_STATUS{
                 STATUS_FINISHED         = 9 
 }EM_FILE_STATUS;
 
+
+class CSInstance : public CInstance{
+
+public:
+        typedef void (CSInstance::*MsgProcess)(CMessage *const pMsg); 
+private:
+        void DaemonInstanceEntry(CMessage *const pcMsg,CApp *pCApp);
+        void InstanceEntry(CMessage *const);
+        bool CheckAuthorization(TSinInfo *tSinInfo,u32 dwLen);
+private:
+        typedef struct tagCmdNode{
+        u32         EventState;
+        CSInstance::MsgProcess  c_MsgProcess;
+        struct      tagCmdNode *next;
+        }tCmdNode;
+
+
         EM_FILE_STATUS emFileStatus;
 
         TSinInfo g_tSinInfo;
@@ -96,10 +101,13 @@ typedef enum tagEM_FILE_STATUS{
         tCmdNode *m_tCmdChain;
         tCmdNode *m_tCmdDaemonChain;
         u8       file_name_path[MAX_FILE_NAME_LENGTH];
-
+        bool     m_bConnectedFlag;
+        bool     m_bSignFlag;
 public:
         CSInstance():file(INVALID_FILEHANDLE),emFileStatus(STATUS_INIT)
-                     ,m_tCmdChain(NULL),m_tCmdDaemonChain(NULL){
+                     ,m_tCmdChain(NULL),m_tCmdDaemonChain(NULL)
+                     ,m_bConnectedFlag(false),
+                     ,m_bSignFlag(false){
                 strcpy((LPSTR)g_tSinInfo.g_Username,"admin");
                 strcpy((LPSTR)g_tSinInfo.g_Passwd,"admin");
                 memset(file_name_path,0,sizeof(u8)*MAX_FILE_NAME_LENGTH);
@@ -125,6 +133,11 @@ public:
         void ReceiveCancel(CMessage* const);
         void FileGoOn(CMessage* const);
         void FileStableRemove(CMessage* const);
+
+        void notifyConnected(CMessage* const);
+        void DaemonFileReceiveUpload(CMessage*const);
+        //断链检测处理函数
+        void DealDisconnect(CMessage* const);
 
 };
 
