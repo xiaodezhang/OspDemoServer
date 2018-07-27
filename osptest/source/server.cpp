@@ -4,8 +4,10 @@
 
 #define MAKEESTATE(state,event) ((u32)((event)<< 4 +(state)))
 #define MAX_USER_NAME_LENGTH           100
+#define MAX_PASSWD_LENGTH              100
 #define TEST_USER_NUM           5
 
+#define USE_CONNECT_FLAG  0
 
 CSApp g_cCSApp;
 
@@ -22,20 +24,26 @@ typedef struct tagFileList{
         u16                    DealInstance;
 }TFileList;
 
+//已登录客户端表
 typedef struct tagClientList{
         struct list_head       tListHead;
-        u16                    wClientId;   //客户端node作为id
-        bool                   wSignFlag;
+        u32                    wClientId;     //客户端node作为id
 }TClientList;
 
 typedef struct tagUserList{
         struct list_head       tListHead;
         s8                     chUserName[MAX_USER_NAME_LENGTH+1];
+        s8                     chPasswd[MAX_PASSWD_LENGTH+1];
         u16                    level;   //定义用户权限
 }TUserList;
 
+typedef struct tagUploadInfo{
+        u32                    srcid;
+        u32                    srcnode;
+        s8                     fileName[MAX_FILE_NAME_LENGTH];
+}TUploadInfo;
 
-static bool CheckSign(u16 wClientId,TClientList **tClient);
+static bool CheckSign(u32 wClientId,TClientList **tClient);
 static bool CheckFileIn(LPCSTR filename,TFileList **tFile);
 
 
@@ -48,6 +56,7 @@ int main(){
 #endif
 
         int i,j;
+        TClientList *tClient;
 
         printf("demo osp server\n");
         if(!ret){
@@ -85,8 +94,19 @@ int main(){
                         return -1;
                 }
                 strcpy(tUsers[i]->chUserName,names[i]);
+                strcpy(tUsers[i]->chPasswd,"admin");
                 list_add(&(tUsers[i]->tListHead),&tUserList);
         }
+
+        //本地结点注册到客户表中
+        tClient = (TClientList*)malloc(sizeof(TClientList));
+        if(!tClient){
+             OspLog(LOG_LVL_ERROR,"[main]client list malloc failed\n");
+             return -1;
+        }
+        tClient->wClientId = 0;
+        list_add(&tClient->tListHead,&tClientList);
+
         while(1)
                 OspDelay(100);
 
@@ -99,12 +119,13 @@ int main(){
 
 void CSInstance::InstanceEntry(CMessage * const pMsg){
 
+#if USE_CONNECT_FLAG 
         if(!m_bConnectedFlag){
                  OspLog(LOG_LVL_ERROR,"[InstanceEntry]disconnected\n");
                  return;
         }
-
-        if(!CheckSign(pMsg->srcid,NULL)){
+#endif
+        if(!CheckSign(pMsg->srcnode,NULL)){
                  OspLog(LOG_LVL_ERROR,"[InstanceEntry]not signed,sign in first\n");
                  return;
         }
@@ -122,7 +143,8 @@ void CSInstance::InstanceEntry(CMessage * const pMsg){
         if(FindProcess(MAKEESTATE(curState,curEvent),&c_MsgProcess,m_tCmdChain)){
                 (this->*c_MsgProcess)(pMsg);
         }else{
-                OspLog(LOG_LVL_ERROR,"[InstanceEntry] can not find the EState\n");
+                OspLog(LOG_LVL_ERROR,"[InstanceEntry] can not find the EState,event:%d\nstate:%d\n"
+                                ,curEvent,curState);
                 printf("[InstanceEntry] can not find the EState\n");
         }
 
@@ -142,7 +164,8 @@ void CSInstance::DaemonInstanceEntry(CMessage *const pMsg,CApp *pCApp){
         if(FindProcess(MAKEESTATE(curState,curEvent),&c_MsgProcess,m_tCmdDaemonChain)){
                 (this->*c_MsgProcess)(pMsg);
         }else{
-                OspLog(LOG_LVL_ERROR,"[InstanceEntry] can not find the EState\n");
+                OspLog(LOG_LVL_ERROR,"[DaemonInstanceEntry] can not find the EState,event:%d\nstate:%d\n"
+                                ,curEvent,curState);
                 printf("[InstanceEntry] can not find the EState\n");
         }
 
@@ -154,7 +177,7 @@ void CSInstance::MsgProcessInit(){
         RegMsgProFun(MAKEESTATE(IDLE_STATE,SIGN_IN),&CSInstance::SignIn,&m_tCmdDaemonChain);
         RegMsgProFun(MAKEESTATE(IDLE_STATE,SIGN_OUT),&CSInstance::SignOut,&m_tCmdDaemonChain);
 
-        RegMsgProFun(MAKEESTATE(IDLE_STATE,OSP_DISCONNECT),&CCInstance::DealDisconnect,&m_tCmdDaemonChain);
+        RegMsgProFun(MAKEESTATE(IDLE_STATE,OSP_DISCONNECT),&CSInstance::DealDisconnect,&m_tCmdDaemonChain);
 
         RegMsgProFun(MAKEESTATE(IDLE_STATE,FILE_RECEIVE_UPLOAD),&CSInstance::DaemonFileReceiveUpload
                         ,&m_tCmdDaemonChain);
@@ -251,11 +274,16 @@ void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){
         struct list_head *tFileHead;
         TFileList *tnFile;
         bool inFileList = false;
+        TUploadInfo tUploadInfo;
 
+
+        printf("file\nsrcnode:%d\n,dstnode:%d\n",pMsg->srcnode,pMsg->dstnode);
+#if USE_CONNECT_FLAG 
         if(!m_bConnectedFlag){
                   OspLog(LOG_LVL_ERROR,"[DaemonFileReceiveUpload]disconnected\n");
                   return;
         }
+#endif
 
         if(!pMsg->content || pMsg->length <= 0){
                 OspLog(LOG_LVL_ERROR,"[DaemonFileReceiveUpload]file name is NULL\n");
@@ -274,7 +302,7 @@ void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){
                 return;
         }
 
-        if(!CheckSign(pcMsg->srcid,NULL)){
+        if(!CheckSign(pMsg->srcnode,NULL)){
                  OspLog(LOG_LVL_ERROR,"[DaemonFileReceiveUpload]not signed,sign in first\n");
                 //TODO:通知客户端
                  return;
@@ -282,15 +310,16 @@ void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){
 
         //确认文件没有被其他Instance占用
         list_for_each(tFileHead,&tFileList){
-                tnFile = list_entry(tClientHead,TFileList,tListHead);
-                if(0 == strcmp(tnFile->FileName,pMsg->content)){
+                tnFile = list_entry(tFileHead,TFileList,tListHead);
+                if(0 == strcmp((LPCSTR)tnFile->FileName,(LPCSTR)pMsg->content)){
                         inFileList = true;
                         break;
                 }
         }
 
         //TODO: 其他状态的确认
-        if(inFileList && STATUS_INIT != tnFile->FileStatus){
+        if(inFileList && STATUS_INIT != tnFile->FileStatus 
+                        && STATUS_FINISHED != tnFile->FileStatus){
                 OspLog(SYS_LOG_LEVEL,"[DaemonFileReceiveUpload]file being used\n");
                 //TODO:通知客户端文件被占用
                 return;
@@ -303,24 +332,27 @@ void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){
         }
 
        //查找空闲实例
-       g_cCSApp->wLastIdleInstID %= g_cCSApp->GetInstanceNumber();
-	   instCount = g_cCSApp->wLastIdleInstID;
+       g_cCSApp.wLastIdleInstID %= MAX_INS_NUM;
+	   instCount = g_cCSApp.wLastIdleInstID;
 	   do{
                instCount++;
-               pIns = g_cCSApp->GetInstance(instCount);
+               pIns = (CSInstance*)((CApp*)&g_cCSApp)->GetInstance(instCount);
                if( pIns->CurState() == PENDING ) {
                     break;
                }
-               instCount %= g_cCSApp->GetInstanceNumber();
-	   } while( instCount != g_cCSApp->wLastIdleInstID );
+               instCount %= MAX_INS_NUM;
+	   } while( instCount != g_cCSApp.wLastIdleInstID );
 
-	   if( instCount == g_cCSApp->wLastIdleInstID ){
+	   if( instCount == g_cCSApp.wLastIdleInstID ){
                //TODO:通知客户端，没有找到空闲实例
                return;
        }
-	   g_cCSApp->wLastIdleInstID = instCount;
-       if(OSP_OK != post(MAKEIID(SERVER_APP_ID,instCount),FILE_RECEIVE_UPLOAD
-                               ,pMsg->content ,pMsg->length)){
+	   g_cCSApp.wLastIdleInstID = instCount;
+       tUploadInfo.srcid = pMsg->srcid;
+       tUploadInfo.srcnode = pMsg->srcnode;
+       strcpy(tUploadInfo.fileName,(LPCSTR)pMsg->content);
+       if(OSP_OK != post(MAKEIID(SERVER_APP_ID,instCount),FILE_RECEIVE_UPLOAD_DEAL
+                               ,&tUploadInfo,sizeof(TUploadInfo))){
                OspPrintf(1,0,"[DamonFileReceiveUpload]post to pending instance failed\n");
                printf("[DamonFileReceiveUpload]post to pending instance failed\n");
                //TODO：通知客户端
@@ -328,51 +360,54 @@ void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){
        }
 }
 
-void CSInstance::SignIn(CMessage *const pcMsg){
+void CSInstance::SignIn(CMessage *const pMsg){
 
        struct list_head *tUserHead,*tClientHead;
        TUserList *tnUser;
        TClientList *tnClient,*tClient;
-       bool inClientList,inUserList;
+       bool inUserList;
 
-       if(!pcMsg->content || pcMsg->length <= 0){
+       if(!pMsg->content || pMsg->length <= 0){
                //通知客户端
                 OspLog(LOG_LVL_ERROR,"[SignIn] pMsg is NULL\n");
                 return;
        }
-
-       inClientList = false;
+       
        inUserList = false;
        //查找用户表
        list_for_each(tUserHead,&tUserList){
                tnUser = list_entry(tUserHead,TUserList,tListHead);
-               if(0 == strcmp(tnUser->chUserName,pcMsg->content)){
+               if(0 == strcmp((LPCSTR)tnUser->chUserName,(LPCSTR)pMsg->content)){
                        //允许登陆
                        tClient = (TClientList*)malloc(sizeof(TClientList));
-                       if(!TClientList){
+                       if(!tClient){
                             OspLog(LOG_LVL_ERROR,"[SignIn]client list malloc failed\n");
                             return;
                        }
                        //是否在客户端表中
-                       if(!CheckSign(pcMsg->srcid,NULL)){
+                       if(!CheckSign(pMsg->srcnode,NULL)){
                                //插入客户端表
-                               tClient->wClientId = pcMsg->srcid;
+                               tClient->wClientId = pMsg->srcnode;
+                               printf("srcnode:%d\ndstnode:%d\n",pMsg->srcnode,pMsg->dstnode);
                                list_add(&tClient->tListHead,&tClientList);
+                       }
+                       if(!CheckSign(pMsg->srcnode,NULL)){
+                               printf("error\n");
                        }
                        inUserList = true;
                        break;
                }
        }
        if(inUserList){
-               if(OSP_OK != post(pcMsg->srcid,SIGN_IN_ACK,"succeed"
-                                     ,strlen("succeed")+1,pcMsg->srcnode)){
+               if(OSP_OK != post(pMsg->srcid,SIGN_IN_ACK,"succeed"
+                                     ,strlen("succeed")+1,pMsg->srcnode)){
                        OspPrintf(1,0,"[SignIn]post back failed\n");
                        printf("[SignIn]post back failed\n");
                        return;
                }
        }else{
-               if(OSP_OK != post(pcMsg->srcid,SIGN_IN_ACK,"failed"
-                                       ,strlen("failed")+1,pcMsg->srcnode)){
+               if(OSP_OK != post(pMsg->srcid,SIGN_IN_ACK,"failed"
+                                       ,strlen("failed")+1,pMsg->srcnode)){
                        //TODO:error deal
                        OspPrintf(1,0,"[SignIn]post back failed\n");
                        printf("[SignIn]post back failed\n");
@@ -380,26 +415,31 @@ void CSInstance::SignIn(CMessage *const pcMsg){
                OspLog(SYS_LOG_LEVEL,"[SignIn]sign in failed\n");
                return;
        }
+
+#if USE_CONNECT_FLAG 
        m_bConnectedFlag = true;
+#endif
        OspLog(SYS_LOG_LEVEL,"[SignIn]sign in\n");
 }
 
-void CSInstance::SignOut(CMessage* const pcMsg){
+void CSInstance::SignOut(CMessage* const pMsg){
 
         TClientList* tClient;
 
+#if USE_CONNECT_FLAG 
         if(!m_bConnectedFlag){
                   OspLog(LOG_LVL_ERROR,"[SignOut]disconnected\n");
                   return;
         }
 
-        if(!CheckSign(pcMsg->srcid,&tClient)){
+#endif
+        if(!CheckSign(pMsg->srcnode,&tClient)){
                  OspLog(LOG_LVL_ERROR,"[SignOut]not signed,sign in first\n");
                  return;
         }
 
-        if(OSP_OK != post(pcMsg->srcid,SIGN_OUT_ACK,NULL
-              ,0,pcMsg->srcnode)){
+        if(OSP_OK != post(pMsg->srcid,SIGN_OUT_ACK,NULL
+              ,0,pMsg->srcnode)){
                 OspPrintf(1,0,"[SignOut]post back failed\n");
                 printf("[SignOut]post back failed\n");
                 return;
@@ -412,13 +452,15 @@ void CSInstance::SignOut(CMessage* const pcMsg){
 
 void CSInstance::FileReceiveUpload(CMessage* const pMsg){
 
+
         TFileList *tFile;
+        TUploadInfo *tUploadInfo;
+
+        tUploadInfo = (TUploadInfo*)pMsg->content;
+        strcpy(file_name_path,(LPCSTR)tUploadInfo->fileName);
 #ifdef _LINUX_
         struct flock fl;
-#endif
-        memcpy(file_name_path,pMsg->content,pMsg->length);
-#ifdef _LINUX_
-        if(INVALID_FILEHANDLE == (file = open((LPCSTR)pMsg->content,O_WRONLY | O_CREAT))){
+        if(INVALID_FILEHANDLE == (file = open((LPCSTR)file_name_path,O_WRONLY | O_CREAT))){
                 //TODO:通知客户端,get the errno
                 OspLog(LOG_LVL_ERROR,"[FileReceiveUpload]file open error\n");
                 perror("[FileReceiveUpload]open file error\n");
@@ -455,24 +497,23 @@ void CSInstance::FileReceiveUpload(CMessage* const pMsg){
 #elif defined _MSC_VER
 #endif
 
-        if(OSP_OK != post(pMsg->srcid,FILE_RECEIVE_UPLOAD_ACK,NULL
-              ,0,pMsg->srcnode)){
+        if(OSP_OK != post(tUploadInfo->srcid,FILE_RECEIVE_UPLOAD_ACK,NULL
+              ,0,tUploadInfo->srcnode)){
                 OspPrintf(1,0,"[FileReceiveUpload]post back failed\n");
                 printf("[FileReceiveUpload]post back failed\n");
                 //TODO:资源释放
                 return;
         }
-        //TODO：文件注册
-
+        //文件注册
         tFile = (TFileList*)malloc(sizeof(TFileList));
-        if(!tFileList){
+        if(!tFile){
                 OspLog(LOG_LVL_ERROR,"[FileReceiveUpload]file malloc failed\n");
                 //TODO:资源释放
                 return;
         }
-        strcmp(tFileList->FileName,pMsg->content);
-        tFileList->FileStatus = STATUS_RECEIVE_UPLOAD;
-        tFileList->DealInstance = GetInsID();
+        strcmp((LPCSTR)tFile->FileName,(LPCSTR)pMsg->content);
+        tFile->FileStatus = STATUS_RECEIVE_UPLOAD;
+        tFile->DealInstance = GetInsID();
         list_add(&tFile->tListHead,&tFileList);
 
         NextState(RUNNING_STATE);
@@ -613,7 +654,7 @@ void CSInstance::FileRemove(CMessage* const pMsg){
 
 #elif defined _MSC_VER_
 #endif
-        if(!CheckFileIn(file_name_path,&tFile)){
+        if(!CheckFileIn((LPCSTR)file_name_path,&tFile)){
                 OspLog(LOG_LVL_ERROR,"[FileRemove]file not in list\n");//客户端文件状态错误？
                 //TODO:error deal
                 return;
@@ -643,7 +684,7 @@ void CSInstance::FileStableRemove(CMessage* const pMsg){
         }
 #elif defined _MSC_VER_
 #endif
-        if(!CheckFileIn(file_name_path,&tFile)){
+        if(!CheckFileIn((LPCSTR)file_name_path,&tFile)){
                 OspLog(LOG_LVL_ERROR,"[FileRemove]file not in list\n");//客户端文件状态错误？
                 //TODO:error deal
                 return;
@@ -655,6 +696,8 @@ void CSInstance::FileStableRemove(CMessage* const pMsg){
 }
 
 void CSInstance::FileCancel(CMessage* const pMsg){
+
+        TFileList* tFile;
 
         //保存为临时文件，
 #if 0
@@ -668,17 +711,24 @@ void CSInstance::FileCancel(CMessage* const pMsg){
         }
 #endif
 #ifdef _LINUX_
-     if(-1 == close(file)){//record locks removed
-             OspLog(LOG_LVL_ERROR,"[FileCancel]file close failed\n");
-             //get the errno
-             //TODO：通知客户端
-             return;
-     }
-     OspLog(SYS_LOG_LEVEL,"[FileCancel]file closed\n");
+        if(-1 == close(file)){//record locks removed
+                OspLog(LOG_LVL_ERROR,"[FileCancel]file close failed\n");
+                //get the errno
+                //TODO：通知客户端
+                return;
+        }
+        OspLog(SYS_LOG_LEVEL,"[FileCancel]file closed\n");
 #elif defined _MSC_VER_
 #endif
 
         emFileStatus = STATUS_CANCELLED;
+        if(!CheckFileIn((LPCSTR)file_name_path,&tFile)){
+                OspLog(LOG_LVL_ERROR,"[FileRemove]file not in list\n");//客户端文件状态错误？
+                //TODO:error deal
+                return;
+        }
+        tFile->FileStatus = STATUS_CANCELLED;
+
         if(OSP_OK != post(pMsg->srcid,FILE_CANCEL_ACK
                             ,&emFileStatus,sizeof(emFileStatus),pMsg->srcnode)){
                 OspPrintf(1,0,"[FileCancel]post back failed\n");
@@ -747,20 +797,24 @@ void CSInstance::FileFinish(CMessage* const pMsg){
      emFileStatus = STATUS_FINISHED;
 }
 
-void CCInstance::DealDisconnect(CMessage* const pMsg){
+void CSInstance::DealDisconnect(CMessage* const pMsg){
 
+        //TODO:断开之后状态需要回收
 #if 1
         struct list_head *tClientHead;
         TClientList *tnClient;
 
-        //TODO:断开之后状态需要回收
+        //客户端表清除
         list_for_each(tClientHead,&tClientList){
                 tnClient = list_entry(tClientHead,TClientList,tListHead);
                 free(tnClient);
         }
+#if USE_CONNECT_FLAG 
         m_bConnectedFlag = false;
+#endif
 
         //TODO：断点续传
+#if 0
         if(file){
                 if(fclose(file) == 0){
                         OspLog(SYS_LOG_LEVEL,"[FileRemovelAck]file closed\n");
@@ -770,19 +824,16 @@ void CCInstance::DealDisconnect(CMessage* const pMsg){
                         return;
                 }
         }
+#endif
         //需要配合文件的关闭回收
         emFileStatus = STATUS_INIT;
         NextState(IDLE_STATE);
-        m_dwDisInsID = 0;
-        m_wFileSize = 0;
-        m_wUploadFileSize = 0;
         //m_wServerPort = SERVER_PORT;
         OspLog(SYS_LOG_LEVEL,"[DealDisconnect]disconnected\n");
 #endif
-
 }
 
-static bool CheckSign(u16 wClientId,TClientList **tClient){
+static bool CheckSign(u32 wClientId,TClientList **tClient){
 
         struct list_head *tClientHead;
         TClientList *tnClient;
@@ -808,8 +859,8 @@ static bool CheckFileIn(LPCSTR filename,TFileList **tFile){
         bool inFileList = false;
 
         list_for_each(tFileHead,&tFileList){
-                tnFile = list_entry(tFileHea,TFileList,tListHead);
-                if(0 == strcmp(tnFile->FileName,filename)){
+                tnFile = list_entry(tFileHead,TFileList,tListHead);
+                if(0 == strcmp((LPCSTR)tnFile->FileName,filename)){
                         inFileList = true;
                         break;
                 }

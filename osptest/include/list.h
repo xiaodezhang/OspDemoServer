@@ -38,52 +38,52 @@ static inline void INIT_LIST_HEAD(struct list_head *list)
 }
 
 /*
- * Insert a new entry between two known consecutive entries.
+ * Insert a new_C entry between two known consecutive entries.
  *
  * This is only for internal list manipulation where we know
  * the prev/next entries already!
  */
 #ifndef CONFIG_DEBUG_LIST
-static inline void __list_add(struct list_head *new,
+static inline void __list_add(struct list_head *new_C,
              struct list_head *prev,
              struct list_head *next)
 {
-    next->prev = new;
-    new->next = next;
-    new->prev = prev;
-    prev->next = new;
+    next->prev = new_C;
+    new_C->next = next;
+    new_C->prev = prev;
+    prev->next = new_C;
 }
 #else
-extern void __list_add(struct list_head *new,
+extern void __list_add(struct list_head *new_C,
              struct list_head *prev,
              struct list_head *next);
 #endif
 
 /**
- * list_add - add a new entry
- * @new: new entry to be added
+ * list_add - add a new_C entry
+ * @new_C: new_C entry to be added
  * @head: list head to add it after
  *
- * Insert a new entry after the specified head.
+ * Insert a new_C entry after the specified head.
  * This is good for implementing stacks.
  */
-static inline void list_add(struct list_head *new, struct list_head *head)
+static inline void list_add(struct list_head *new_C, struct list_head *head)
 {
-    __list_add(new, head, head->next);
+    __list_add(new_C, head, head->next);
 }
 
 
 /**
- * list_add_tail - add a new entry
- * @new: new entry to be added
+ * list_add_tail - add a new_C entry
+ * @new_C: new_C entry to be added
  * @head: list head to add it before
  *
- * Insert a new entry before the specified head.
+ * Insert a new_C entry before the specified head.
  * This is useful for implementing queues.
  */
-static inline void list_add_tail(struct list_head *new, struct list_head *head)
+static inline void list_add_tail(struct list_head *new_C, struct list_head *head)
 {
-    __list_add(new, head->prev, head);
+    __list_add(new_C, head->prev, head);
 }
 
 /*
@@ -115,25 +115,25 @@ extern void list_del(struct list_head *entry);
 #endif
 
 /**
- * list_replace - replace old entry by new one
+ * list_replace - replace old entry by new_C one
  * @old : the element to be replaced
- * @new : the new element to insert
+ * @new_C : the new_C element to insert
  *
  * If @old was empty, it will be overwritten.
  */
 static inline void list_replace(struct list_head *old,
-                struct list_head *new)
+                struct list_head *new_C)
 {
-    new->next = old->next;
-    new->next->prev = new;
-    new->prev = old->prev;
-    new->prev->next = new;
+    new_C->next = old->next;
+    new_C->next->prev = new_C;
+    new_C->prev = old->prev;
+    new_C->prev->next = new_C;
 }
 
 static inline void list_replace_init(struct list_head *old,
-                    struct list_head *new)
+                    struct list_head *new_C)
 {
-    list_replace(old, new);
+    list_replace(old, new_C);
     INIT_LIST_HEAD(old);
 }
 
@@ -221,18 +221,18 @@ static inline int list_is_singular(const struct list_head *head)
 static inline void __list_cut_position(struct list_head *list,
         struct list_head *head, struct list_head *entry)
 {
-    struct list_head *new_first = entry->next;
+    struct list_head *new_C_first = entry->next;
     list->next = head->next;
     list->next->prev = list;
     list->prev = entry;
     entry->next = list;
-    head->next = new_first;
-    new_first->prev = head;
+    head->next = new_C_first;
+    new_C_first->prev = head;
 }
 
 /**
  * list_cut_position - cut a list into two
- * @list: a new list to add all removed entries
+ * @list: a new_C list to add all removed entries
  * @head: a list with entries
  * @entry: an entry within head, could be the head itself
  *    and if so we won't cut the list
@@ -274,7 +274,7 @@ static inline void __list_splice(const struct list_head *list,
 
 /**
  * list_splice - join two lists, this is designed for stacks
- * @list: the new list to add.
+ * @list: the new_C list to add.
  * @head: the place to add it in the first list.
  */
 static inline void list_splice(const struct list_head *list,
@@ -286,7 +286,7 @@ static inline void list_splice(const struct list_head *list,
 
 /**
  * list_splice_tail - join two lists, each list being a queue
- * @list: the new list to add.
+ * @list: the new_C list to add.
  * @head: the place to add it in the first list.
  */
 static inline void list_splice_tail(struct list_head *list,
@@ -298,7 +298,7 @@ static inline void list_splice_tail(struct list_head *list,
 
 /**
  * list_splice_init - join two lists and reinitialise the emptied list.
- * @list: the new list to add.
+ * @list: the new_C list to add.
  * @head: the place to add it in the first list.
  *
  * The list at @list is reinitialised
@@ -314,7 +314,7 @@ static inline void list_splice_init(struct list_head *list,
 
 /**
  * list_splice_tail_init - join two lists and reinitialise the emptied list
- * @list: the new list to add.
+ * @list: the new_C list to add.
  * @head: the place to add it in the first list.
  *
  * Each of the lists is a queue.
@@ -626,11 +626,11 @@ static inline void hlist_add_after(struct hlist_node *n,
  * reference of the first entry if it exists.
  */
 static inline void hlist_move_list(struct hlist_head *old,
-                 struct hlist_head *new)
+                 struct hlist_head *new_C)
 {
-    new->first = old->first;
-    if (new->first)
-        new->first->pprev = &new->first;
+    new_C->first = old->first;
+    if (new_C->first)
+        new_C->first->pprev = &new_C->first;
     old->first = NULL;
 }
 

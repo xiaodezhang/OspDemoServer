@@ -32,7 +32,7 @@
 #define SERVER_CONNECT_TEST               (EV_CLIENT_TEST_BGN+1)
 #define AUTHORIZATION_NAME_SIZE            20
 
-#define BUFFER_SIZE                       (u16)(MAX_MSG_LEN >> 1)
+#define BUFFER_SIZE                       (u16)(MAX_MSG_LEN / 2)
 #define MAX_FILE_NAME_LENGTH               200
 
 #define FILE_RECEIVE_REMOVE               (EV_CLIENT_TEST_BGN+17)
@@ -100,13 +100,13 @@ private:
         FILEHANDLE file;
         tCmdNode *m_tCmdChain;
         tCmdNode *m_tCmdDaemonChain;
-        u8       file_name_path[MAX_FILE_NAME_LENGTH];
+        s8       file_name_path[MAX_FILE_NAME_LENGTH];
         bool     m_bConnectedFlag;
         bool     m_bSignFlag;
 public:
         CSInstance():file(INVALID_FILEHANDLE),emFileStatus(STATUS_INIT)
                      ,m_tCmdChain(NULL),m_tCmdDaemonChain(NULL)
-                     ,m_bConnectedFlag(false),
+                     ,m_bConnectedFlag(false)
                      ,m_bSignFlag(false){
                 strcpy((LPSTR)g_tSinInfo.g_Username,"admin");
                 strcpy((LPSTR)g_tSinInfo.g_Passwd,"admin");
