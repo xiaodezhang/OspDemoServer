@@ -50,9 +50,9 @@ static bool CheckFileIn(LPCSTR filename,TFileList **tFile);
 int main(){
 
 #ifdef _MSC_VER
-        int ret = OspInit(TRUE,2500,"WindowsOspServer");
+        int ret = OspInit(TRUE,5500,"WindowsOspServer");
 #else
-        int ret = OspInit(TRUE,2500,"LinuxOspServer");
+        int ret = OspInit(TRUE,5500,"LinuxOspServer");
 #endif
 
         int i,j;
@@ -70,6 +70,7 @@ int main(){
                 OspQuit();
                 return -1;
         }
+        //表初始化
         INIT_LIST_HEAD(&tClientList);
         INIT_LIST_HEAD(&tFileList);
         INIT_LIST_HEAD(&tUserList);
@@ -114,6 +115,7 @@ int main(){
                 free(tUsers[i]);
         }
         OspQuit();
+        free(tClient);
         return 0;
 }
 
@@ -271,9 +273,7 @@ void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){
 
         u16 instCount;
         CSInstance* pIns;
-        struct list_head *tFileHead;
         TFileList *tnFile;
-        bool inFileList = false;
         TUploadInfo tUploadInfo;
 
 
@@ -309,16 +309,8 @@ void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){
         }
 
         //确认文件没有被其他Instance占用
-        list_for_each(tFileHead,&tFileList){
-                tnFile = list_entry(tFileHead,TFileList,tListHead);
-                if(0 == strcmp((LPCSTR)tnFile->FileName,(LPCSTR)pMsg->content)){
-                        inFileList = true;
-                        break;
-                }
-        }
-
         //TODO: 其他状态的确认
-        if(inFileList && STATUS_INIT != tnFile->FileStatus 
+        if(CheckFileIn((LPCSTR)pMsg->content,&tnFile)&& STATUS_INIT != tnFile->FileStatus 
                         && STATUS_FINISHED != tnFile->FileStatus){
                 OspLog(SYS_LOG_LEVEL,"[DaemonFileReceiveUpload]file being used\n");
                 //TODO:通知客户端文件被占用
@@ -328,7 +320,9 @@ void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){
         if(access((LPCSTR)pMsg->content,F_OK) != -1){
                 OspLog(SYS_LOG_LEVEL,"[DaemonFileReceiveUpload]file exists\n");
               //TODO:通知客户端文件已存在
+#if 0
                 return;
+#endif
         }
 
        //查找空闲实例
@@ -435,6 +429,7 @@ void CSInstance::SignOut(CMessage* const pMsg){
 #endif
         if(!CheckSign(pMsg->srcnode,&tClient)){
                  OspLog(LOG_LVL_ERROR,"[SignOut]not signed,sign in first\n");
+                 //TODO:通知客户端
                  return;
         }
 
@@ -497,6 +492,8 @@ void CSInstance::FileReceiveUpload(CMessage* const pMsg){
 #elif defined _MSC_VER
 #endif
 
+        //客户端向RUNNING Instance发送回复
+        NextState(RUNNING_STATE);
         if(OSP_OK != post(tUploadInfo->srcid,FILE_RECEIVE_UPLOAD_ACK,NULL
               ,0,tUploadInfo->srcnode)){
                 OspPrintf(1,0,"[FileReceiveUpload]post back failed\n");
@@ -507,16 +504,15 @@ void CSInstance::FileReceiveUpload(CMessage* const pMsg){
         //文件注册
         tFile = (TFileList*)malloc(sizeof(TFileList));
         if(!tFile){
-                OspLog(LOG_LVL_ERROR,"[FileReceiveUpload]file malloc failed\n");
+                OspLog(LOG_LVL_ERROR,"[FileReceiveUpload]file list item malloc failed\n");
                 //TODO:资源释放
                 return;
         }
-        strcmp((LPCSTR)tFile->FileName,(LPCSTR)pMsg->content);
+        strcpy((LPSTR)tFile->FileName,(LPCSTR)file_name_path);
         tFile->FileStatus = STATUS_RECEIVE_UPLOAD;
         tFile->DealInstance = GetInsID();
         list_add(&tFile->tListHead,&tFileList);
 
-        NextState(RUNNING_STATE);
         emFileStatus = STATUS_RECEIVE_UPLOAD;
         printf("[FileReceiveUpload]file name send\n");
 }
@@ -723,7 +719,8 @@ void CSInstance::FileCancel(CMessage* const pMsg){
 
         emFileStatus = STATUS_CANCELLED;
         if(!CheckFileIn((LPCSTR)file_name_path,&tFile)){
-                OspLog(LOG_LVL_ERROR,"[FileRemove]file not in list\n");//客户端文件状态错误？
+                OspLog(LOG_LVL_ERROR,"[FileCancel]file not in list,file name:%s\n"
+                                ,file_name_path);//客户端文件状态错误？
                 //TODO:error deal
                 return;
         }
@@ -733,11 +730,15 @@ void CSInstance::FileCancel(CMessage* const pMsg){
                             ,&emFileStatus,sizeof(emFileStatus),pMsg->srcnode)){
                 OspPrintf(1,0,"[FileCancel]post back failed\n");
                 printf("[FileCancel]post back failed\n");
+                //TODO:状态回收
+                return;
         }
 }
 
 void CSInstance::FileFinish(CMessage* const pMsg){
 
+
+     TFileList* tFile;
      if(pMsg->content && pMsg->length > 0){
 #if 0
              if(fwrite(pMsg->content,1,sizeof(s8)*pMsg->length,file)
@@ -788,6 +789,14 @@ void CSInstance::FileFinish(CMessage* const pMsg){
      OspLog(SYS_LOG_LEVEL,"[FileFinish]file closed\n");
 #elif defined _MSC_VER_
 #endif
+     if(!CheckFileIn((LPCSTR)file_name_path,&tFile)){
+             OspLog(LOG_LVL_ERROR,"[FileRemove]file not in list\n");//客户端文件状态错误？
+             //TODO:error deal
+             return;
+     }
+     list_del(&tFile->tListHead);
+     free(tFile);
+
      if(OSP_OK != post(pMsg->srcid,FILE_FINISH_ACK,NULL
            ,0,pMsg->srcnode)){
              OspPrintf(1,0,"post back failed\n");
