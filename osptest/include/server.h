@@ -45,12 +45,14 @@
 #define FILE_LOCKED                       (EV_CLIENT_TEST_BGN+26)
 
 #define FILE_STABLE_REMOVE                (EV_CLIENT_TEST_BGN+27)
-#define FILE_STABLE_REMOVE_ACK            (EV_CLIENT_TEST_BGN+28)
+//#define FILE_STABLE_REMOVE_ACK            (EV_CLIENT_TEST_BGN+28)
 
 
 #define FILE_RECEIVE_UPLOAD_DEAL          (EV_CLIENT_TEST_BGN+31)
 
 #define FILE_GO_ON_DEAL                   (EV_CLIENT_TEST_BGN+41)
+
+#define FILE_STABLE_REMOVE_DEAL           (EV_CLIENT_TEST_BGN+43)
 
 
 
@@ -140,6 +142,7 @@ public:
         void notifyConnected(CMessage* const);
         void DaemonFileReceiveUpload(CMessage*const);
         void FileGoOnDeal(CMessage*const);
+        void FileStableRemoveDeal(CMessage*const);
 
         //断链检测处理函数
         void DealDisconnect(CMessage* const);

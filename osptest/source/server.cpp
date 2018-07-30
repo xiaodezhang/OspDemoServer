@@ -61,13 +61,15 @@ int main(){
 
         printf("demo osp server\n");
         if(!ret){
-                OspPrintf(1,0,"osp init fail\n");
+                OspPrintf(1,0,"[main]osp init failed\n");
+                printf("[main]osp init failed\n");
         }
         g_cCSApp.CreateApp("OspServerApp",SERVER_APP_ID,SERVER_APP_PRI,MAX_MSG_WAITING);
         ret = OspCreateTcpNode(0,OSP_AGENT_SERVER_PORT);
 
         if(INVALID_SOCKET == ret){
-                OspPrintf(1,0,"create positive node failed,quit\n");
+                OspPrintf(1,0,"[main]create positive node failed,quit\n");
+                printf("[main]create positive node failed,quit\n");
                 OspQuit();
                 return -1;
         }
@@ -82,17 +84,27 @@ int main(){
         TUserList *tUsers[TEST_USER_NUM];
         LPCSTR names[TEST_USER_NUM] = {"Robert","Michael","William","David","GG"};
         for(i = 0;i < TEST_USER_NUM;i++){
+#if THREAD_SAFE_MALLOC
                 tUsers[i] = (TUserList*)malloc(sizeof(TUserList));
+#else
+                tUsers[i] = new TUserList();
+#endif
                 if(!tUsers[i]){
                         for(j = 0;j < i;j++){
+#if THREAD_SAFE_MALLOC
                                 free(tUsers[j]);
+#else
+                                delete tUsers[j];
+#endif
                         }
                         OspLog(LOG_LVL_ERROR,"[main]user malloc failed\n");
+                        printf("[main]user malloc failed\n");
                         OspQuit();
                         return -1;
                 }
                 if(strlen(names[i]) > MAX_USER_NAME_LENGTH){
                         OspLog(LOG_LVL_ERROR,"[main]user name too long\n");
+                        printf("[main]user name too long\n");
                         return -1;
                 }
                 strcpy(tUsers[i]->chUserName,names[i]);
@@ -101,9 +113,14 @@ int main(){
         }
 
         //本地结点注册到客户表中
+#if THREAD_SAFE_MALLOC
         tClient = (TClientList*)malloc(sizeof(TClientList));
+#else
+        tClient = new TClientList;
+#endif
         if(!tClient){
              OspLog(LOG_LVL_ERROR,"[main]client list malloc failed\n");
+             printf("[main]client list malloc failed\n");
              return -1;
         }
         tClient->wClientId = 0;
@@ -113,10 +130,18 @@ int main(){
                 OspDelay(100);
 
         for(i = 0;i < TEST_USER_NUM;i++){
+#if THREAD_SAFE_MALLOC
                 free(tUsers[i]);
+#else
+                delete tUsers[i];
+#endif
         }
         OspQuit();
+#if THREAD_SAFE_MALLOC
         free(tClient);
+#else
+        delete tClient;
+#endif
         return 0;
 }
 
@@ -185,6 +210,7 @@ void CSInstance::MsgProcessInit(){
         RegMsgProFun(MAKEESTATE(IDLE_STATE,FILE_RECEIVE_UPLOAD),&CSInstance::DaemonFileReceiveUpload
                         ,&m_tCmdDaemonChain);
         RegMsgProFun(MAKEESTATE(IDLE_STATE,FILE_GO_ON),&CSInstance::FileGoOn,&m_tCmdDaemonChain);
+        RegMsgProFun(MAKEESTATE(IDLE_STATE,FILE_STABLE_REMOVE),&CSInstance::FileStableRemove,&m_tCmdDaemonChain);
 
 
       //common Instance
@@ -197,23 +223,27 @@ void CSInstance::MsgProcessInit(){
         RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_CANCEL),&CSInstance::FileCancel,&m_tCmdChain);
         RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_REMOVE),&CSInstance::FileRemove,&m_tCmdChain);
         RegMsgProFun(MAKEESTATE(IDLE_STATE,FILE_GO_ON_DEAL),&CSInstance::FileGoOnDeal,&m_tCmdChain);
-        RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_STABLE_REMOVE),&CSInstance::FileStableRemove,&m_tCmdChain);
+        RegMsgProFun(MAKEESTATE(IDLE_STATE,FILE_STABLE_REMOVE_DEAL),&CSInstance::FileStableRemoveDeal,&m_tCmdChain);
 }
 
 void CSInstance::NodeChainEnd(){
 
-        tCmdNode *NextNode;
-
         while(m_tCmdChain){
-                NextNode = m_tCmdChain->next;
+#if THREAD_SAFE_MALLOC
                 free(m_tCmdChain);
-                m_tCmdChain = NextNode;
+#else
+                delete m_tCmdChain;
+#endif
+                m_tCmdChain = m_tCmdChain->next;
         }
 
         while(m_tCmdDaemonChain){
-                NextNode = m_tCmdDaemonChain->next;
+#if THREAD_SAFE_MALLOC
                 free(m_tCmdDaemonChain);
-                m_tCmdDaemonChain = NextNode;
+#else
+                delete m_tCmdDaemonChain;
+#endif
+                m_tCmdDaemonChain = m_tCmdDaemonChain->next;
         }
 }
 
@@ -223,7 +253,11 @@ bool CSInstance::RegMsgProFun(u32 EventState,MsgProcess c_MsgProcess,tCmdNode** 
 
         Node = *tppNodeChain;
 
+#if THREAD_SAFE_MALLOC
         if(!(NewNode = (tCmdNode*)malloc(sizeof(tCmdNode)))){
+#else
+        if(!(NewNode = new tCmdNode())){
+#endif
                 OspLog(LOG_LVL_ERROR,"[RegMsgProFun] node malloc error\n");
                 return false;
         }
@@ -343,6 +377,7 @@ void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){
                //TODO：通知客户端
                return;
        }
+
 }
 
 
@@ -365,7 +400,11 @@ void CSInstance::SignIn(CMessage *const pMsg){
                tnUser = list_entry(tUserHead,TUserList,tListHead);
                if(0 == strcmp((LPCSTR)tnUser->chUserName,(LPCSTR)pMsg->content)){
                        //允许登陆
+#if THREAD_SAFE_MALLOC
                        tClient = (TClientList*)malloc(sizeof(TClientList));
+#else
+                       tClient = new TClientList();
+#endif
                        if(!tClient){
                             OspLog(LOG_LVL_ERROR,"[SignIn]client list malloc failed\n");
                             return;
@@ -405,6 +444,13 @@ void CSInstance::SignIn(CMessage *const pMsg){
 #if USE_CONNECT_FLAG 
        m_bConnectedFlag = true;
 #endif
+
+        //断链注册
+       if(OSP_OK !=OspNodeDiscCBRegQ(pMsg->srcnode,SERVER_APP_ID,CInstance::DAEMON)){
+           OspLog(LOG_LVL_ERROR,"[main]regis disconnect error\n");
+           return;
+       }
+ 
        OspLog(SYS_LOG_LEVEL,"[SignIn]sign in\n");
 }
 
@@ -432,8 +478,12 @@ void CSInstance::SignOut(CMessage* const pMsg){
                 return;
         }
 
-        list_del(&tClient->tListHead);
+        list_del(&(tClient->tListHead));
+#if THREAD_SAFE_MALLOC
         free(tClient);
+#else
+        delete tClient;
+#endif
         OspLog(SYS_LOG_LEVEL,"[SignOut]sign out\n");
 }
 
@@ -494,7 +544,11 @@ void CSInstance::FileReceiveUpload(CMessage* const pMsg){
                 return;
         }
         //文件注册
+#if THREAD_SAFE_MALLOC
         tFile = (TFileList*)malloc(sizeof(TFileList));
+#else
+        tFile = new TFileList();
+#endif
         if(!tFile){
                 OspLog(LOG_LVL_ERROR,"[FileReceiveUpload]file list item malloc failed\n");
                 //TODO:资源释放
@@ -599,7 +653,7 @@ void CSInstance::FileGoOnDeal(CMessage* const pMsg){
 #endif
                      return;
              }else{
-                     OspLog(LOG_LVL_ERROR,"[FileGoOn]check file locking unexpected error\n");
+                     OspLog(LOG_LVL_ERROR,"[FileGoOnDeal]check file locking unexpected error\n");
 #if 0
                      //通知客户端
                      if(OSP_OK != post(pMsg->srcid,FILE_LOCKING_ERROR,NULL
@@ -665,6 +719,7 @@ void CSInstance::FileGoOn(CMessage* const pMsg){
 void CSInstance::FileRemove(CMessage* const pMsg){
 
         TFileList* tFile;
+        bool stableFlag = false;
 #ifdef _LINUX_
         if(-1 == close(file)){//record locks removed
                 OspLog(LOG_LVL_ERROR,"[FileRemove]file close failed\n");
@@ -678,7 +733,7 @@ void CSInstance::FileRemove(CMessage* const pMsg){
         if(unlink((LPCSTR)file_name_path) == 0){
                 OspLog(SYS_LOG_LEVEL,"[FileRemove]file removed\n");
                 if(OSP_OK != post(pMsg->srcid,FILE_REMOVE_ACK
-                                    ,NULL,0,pMsg->srcnode)){
+                                    ,&stableFlag,sizeof(stableFlag),pMsg->srcnode)){
                         OspPrintf(1,0,"[FileRemove]post back failed\n");
                         printf("[FileRemove]post back failed\n");
                 }
@@ -696,39 +751,82 @@ void CSInstance::FileRemove(CMessage* const pMsg){
                 return;
         }
         emFileStatus = STATUS_REMOVED;
-        list_del(&tFile->tListHead);
+        list_del(&(tFile->tListHead));
+#if THREAD_SAFE_MALLOC
         free(tFile);
+#else
+        delete tFile;
+#endif
         NextState(IDLE_STATE);
 }
 
-void CSInstance::FileStableRemove(CMessage* const pMsg){
+void CSInstance::FileStableRemoveDeal(CMessage* const pMsg){
 
         TFileList* tFile;
+        bool stableFlag = true;
+        TDemoInfo *tDemoInfo;
 
+        tDemoInfo = (TDemoInfo*)pMsg->content;
+
+        strcpy((LPSTR)file_name_path,(LPCSTR)tDemoInfo->fileName);
 #ifdef _LINUX_
         if(unlink((LPCSTR)file_name_path) == 0){
                 OspLog(SYS_LOG_LEVEL,"[FileRemove]file removed\n");
                 emFileStatus = STATUS_REMOVED;
-                if(OSP_OK != post(pMsg->srcid,FILE_STABLE_REMOVE_ACK
-                                    ,NULL,0,pMsg->srcnode)){
+#if 0
+                if(OSP_OK != post(pMsg->srcid,FILE_REMOVE_ACK
+                                    ,&stableFlag,sizeof(stableFlag),pMsg->srcnode)){
                         OspPrintf(1,0,"[FileRemove]post back failed\n");
                         printf("[FileRemove]post back failed\n");
                 }
+#endif
         }else{
                 OspLog(LOG_LVL_ERROR,"[FileRemove]file remove failed\n");
                 //TODO：通知客户端
         }
 #elif defined _MSC_VER_
 #endif
-        if(!CheckFileIn((LPCSTR)file_name_path,&tFile)){
+        if(!CheckFileIn((LPCSTR)tDemoInfo->fileName,&tFile)){
                 OspLog(LOG_LVL_ERROR,"[FileRemove]file not in list\n");//客户端文件状态错误？
                 //TODO:error deal
                 return;
         }
-        list_del(&tFile->tListHead);
+        list_del(&(tFile->tListHead));
+#if THREAD_SAFE_MALLOC
         free(tFile);
+#else
+        delete tFile;
+#endif
 
         NextState(IDLE_STATE);
+}
+
+void CSInstance::FileStableRemove(CMessage* const pMsg){
+
+        CSInstance *ins;
+        TDemoInfo tDemoInfo;
+
+        if(!CheckSign(pMsg->srcnode,NULL)){
+                 OspLog(LOG_LVL_ERROR,"[FileStableRemove]not signed,sign in first\n");
+                 return;
+        }
+
+        ins = GetPendingIns();
+        if(!ins){
+                 OspLog(LOG_LVL_ERROR,"[FileStableRemove]no pending instance,wait...\n");
+                 return;
+        }
+
+        tDemoInfo.srcid = pMsg->srcid;
+        tDemoInfo.srcnode = pMsg->srcnode;
+        strcpy((LPSTR)tDemoInfo.fileName,(LPCSTR)pMsg->content);
+        if(OSP_OK != post(MAKEIID(SERVER_APP_ID,ins->GetInsID()),FILE_STABLE_REMOVE_DEAL
+                                ,&tDemoInfo,sizeof(tDemoInfo))){
+                OspPrintf(1,0,"[FileStableRemove]post back failed\n");
+                printf("[FileStableRemove]post back failed\n");
+                return;
+        }
+
 }
 
 void CSInstance::FileCancel(CMessage* const pMsg){
@@ -838,7 +936,11 @@ void CSInstance::FileFinish(CMessage* const pMsg){
              return;
      }
      list_del(&tFile->tListHead);
+#if THREAD_SAFE_MALLOC
      free(tFile);
+#else
+     delete tFile;
+#endif
 
      if(OSP_OK != post(pMsg->srcid,FILE_FINISH_ACK,NULL
            ,0,pMsg->srcnode)){
@@ -852,20 +954,28 @@ void CSInstance::FileFinish(CMessage* const pMsg){
 void CSInstance::DealDisconnect(CMessage* const pMsg){
 
         //TODO:断开之后状态需要回收
-        struct list_head *tClientHead,*tFileHead;
+        struct list_head *tClientHead,*tFileHead,*templist;
         TClientList *tnClient;
         TFileList *tnFile;
 
         //客户端表清除
-        list_for_each(tClientHead,&tClientList){
+        list_for_each_safe(tClientHead,templist,&tClientList){
                 tnClient = list_entry(tClientHead,TClientList,tListHead);
+#if THREAD_SAFE_MALLOC
                 free(tnClient);
+#else
+                delete tnClient;
+#endif
         }
         list_del_init(&tClientList);
         //TODO:需要修改
-        list_for_each(tFileHead,&tFileList){
+        list_for_each_safe(tFileHead,templist,&tFileList){
                 tnFile = list_entry(tFileHead,TFileList,tListHead);
+#if THREAD_SAFE_MALLOC
                 free(tnFile);
+#else
+                delete tnFile;
+#endif
         }
         list_del_init(&tFileList);
 
@@ -888,7 +998,7 @@ void CSInstance::DealDisconnect(CMessage* const pMsg){
 #ifdef _LINUX_
         if(file != INVALID_FILEHANDLE){
                 if(-1 == close(file)){//record locks removed
-                        OspLog(LOG_LVL_ERROR,"[FileRemove]file close failed\n");
+                        OspLog(LOG_LVL_ERROR,"[DealDisconnect]file close failed\n");
                         //get the errno
                         //TODO：通知客户端
                         return;
