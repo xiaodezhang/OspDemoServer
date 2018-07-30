@@ -50,6 +50,8 @@
 
 #define FILE_RECEIVE_UPLOAD_DEAL          (EV_CLIENT_TEST_BGN+31)
 
+#define FILE_GO_ON_DEAL                   (EV_CLIENT_TEST_BGN+41)
+
 
 
 const u8 SERVER_APP_PRI                  = 80;
@@ -103,6 +105,7 @@ private:
         s8       file_name_path[MAX_FILE_NAME_LENGTH];
         bool     m_bConnectedFlag;
         bool     m_bSignFlag;
+        u32      m_dwDisInsID;
 public:
         CSInstance():file(INVALID_FILEHANDLE),emFileStatus(STATUS_INIT)
                      ,m_tCmdChain(NULL),m_tCmdDaemonChain(NULL)
@@ -136,6 +139,8 @@ public:
 
         void notifyConnected(CMessage* const);
         void DaemonFileReceiveUpload(CMessage*const);
+        void FileGoOnDeal(CMessage*const);
+
         //断链检测处理函数
         void DealDisconnect(CMessage* const);
 

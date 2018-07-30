@@ -37,14 +37,15 @@ typedef struct tagUserList{
         u16                    level;   //定义用户权限
 }TUserList;
 
-typedef struct tagUploadInfo{
+typedef struct tagDemoInfo{
         u32                    srcid;
         u32                    srcnode;
         s8                     fileName[MAX_FILE_NAME_LENGTH];
-}TUploadInfo;
+}TDemoInfo;
 
 static bool CheckSign(u32 wClientId,TClientList **tClient);
 static bool CheckFileIn(LPCSTR filename,TFileList **tFile);
+static CSInstance* GetPendingIns();
 
 
 int main(){
@@ -127,10 +128,12 @@ void CSInstance::InstanceEntry(CMessage * const pMsg){
                  return;
         }
 #endif
+#if 0
         if(!CheckSign(pMsg->srcnode,NULL)){
                  OspLog(LOG_LVL_ERROR,"[InstanceEntry]not signed,sign in first\n");
                  return;
         }
+#endif
 
         if(NULL == pMsg){
                 OspLog(LOG_LVL_ERROR,"[InstanceEntry]Msg is NULL\n");
@@ -178,11 +181,12 @@ void CSInstance::MsgProcessInit(){
        //Daemon Instance
         RegMsgProFun(MAKEESTATE(IDLE_STATE,SIGN_IN),&CSInstance::SignIn,&m_tCmdDaemonChain);
         RegMsgProFun(MAKEESTATE(IDLE_STATE,SIGN_OUT),&CSInstance::SignOut,&m_tCmdDaemonChain);
-
         RegMsgProFun(MAKEESTATE(IDLE_STATE,OSP_DISCONNECT),&CSInstance::DealDisconnect,&m_tCmdDaemonChain);
-
         RegMsgProFun(MAKEESTATE(IDLE_STATE,FILE_RECEIVE_UPLOAD),&CSInstance::DaemonFileReceiveUpload
                         ,&m_tCmdDaemonChain);
+        RegMsgProFun(MAKEESTATE(IDLE_STATE,FILE_GO_ON),&CSInstance::FileGoOn,&m_tCmdDaemonChain);
+
+
       //common Instance
         RegMsgProFun(MAKEESTATE(IDLE_STATE,FILE_RECEIVE_UPLOAD_DEAL),&CSInstance::FileReceiveUpload,&m_tCmdChain);
         RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_RECEIVE_REMOVE),&CSInstance::ReceiveRemove,&m_tCmdChain);
@@ -192,7 +196,7 @@ void CSInstance::MsgProcessInit(){
         RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_FINISH),&CSInstance::FileFinish,&m_tCmdChain);
         RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_CANCEL),&CSInstance::FileCancel,&m_tCmdChain);
         RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_REMOVE),&CSInstance::FileRemove,&m_tCmdChain);
-        RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_GO_ON),&CSInstance::FileGoOn,&m_tCmdChain);
+        RegMsgProFun(MAKEESTATE(IDLE_STATE,FILE_GO_ON_DEAL),&CSInstance::FileGoOnDeal,&m_tCmdChain);
         RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_STABLE_REMOVE),&CSInstance::FileStableRemove,&m_tCmdChain);
 }
 
@@ -271,10 +275,9 @@ bool CSInstance::FindProcess(u32 EventState,MsgProcess* c_MsgProcess,tCmdNode* t
 
 void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){
 
-        u16 instCount;
-        CSInstance* pIns;
         TFileList *tnFile;
-        TUploadInfo tUploadInfo;
+        TDemoInfo tDemoInof;
+        CSInstance *ins;
 
 
         printf("file\nsrcnode:%d\n,dstnode:%d\n",pMsg->srcnode,pMsg->dstnode);
@@ -326,33 +329,22 @@ void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){
         }
 
        //查找空闲实例
-       g_cCSApp.wLastIdleInstID %= MAX_INS_NUM;
-	   instCount = g_cCSApp.wLastIdleInstID;
-	   do{
-               instCount++;
-               pIns = (CSInstance*)((CApp*)&g_cCSApp)->GetInstance(instCount);
-               if( pIns->CurState() == PENDING ) {
-                    break;
-               }
-               instCount %= MAX_INS_NUM;
-	   } while( instCount != g_cCSApp.wLastIdleInstID );
-
-	   if( instCount == g_cCSApp.wLastIdleInstID ){
-               //TODO:通知客户端，没有找到空闲实例
-               return;
+       if(!(ins = GetPendingIns())){
+                OspLog(LOG_LVL_ERROR,"[DemonFileReceiveUpload]no pending instance\n");
+                return;
        }
-	   g_cCSApp.wLastIdleInstID = instCount;
-       tUploadInfo.srcid = pMsg->srcid;
-       tUploadInfo.srcnode = pMsg->srcnode;
-       strcpy(tUploadInfo.fileName,(LPCSTR)pMsg->content);
-       if(OSP_OK != post(MAKEIID(SERVER_APP_ID,instCount),FILE_RECEIVE_UPLOAD_DEAL
-                               ,&tUploadInfo,sizeof(TUploadInfo))){
+       tDemoInof.srcid = pMsg->srcid;
+       tDemoInof.srcnode = pMsg->srcnode;
+       strcpy(tDemoInof.fileName,(LPCSTR)pMsg->content);
+       if(OSP_OK != post(MAKEIID(SERVER_APP_ID,ins->GetInsID()),FILE_RECEIVE_UPLOAD_DEAL
+                               ,&tDemoInof,sizeof(TDemoInfo))){
                OspPrintf(1,0,"[DamonFileReceiveUpload]post to pending instance failed\n");
                printf("[DamonFileReceiveUpload]post to pending instance failed\n");
                //TODO：通知客户端
                return;
        }
 }
+
 
 void CSInstance::SignIn(CMessage *const pMsg){
 
@@ -449,10 +441,10 @@ void CSInstance::FileReceiveUpload(CMessage* const pMsg){
 
 
         TFileList *tFile;
-        TUploadInfo *tUploadInfo;
+        TDemoInfo *tDemoInof;
 
-        tUploadInfo = (TUploadInfo*)pMsg->content;
-        strcpy(file_name_path,(LPCSTR)tUploadInfo->fileName);
+        tDemoInof = (TDemoInfo*)pMsg->content;
+        strcpy(file_name_path,(LPCSTR)tDemoInof->fileName);
 #ifdef _LINUX_
         struct flock fl;
         if(INVALID_FILEHANDLE == (file = open((LPCSTR)file_name_path,O_WRONLY | O_CREAT))){
@@ -494,8 +486,8 @@ void CSInstance::FileReceiveUpload(CMessage* const pMsg){
 
         //客户端向RUNNING Instance发送回复
         NextState(RUNNING_STATE);
-        if(OSP_OK != post(tUploadInfo->srcid,FILE_RECEIVE_UPLOAD_ACK,NULL
-              ,0,tUploadInfo->srcnode)){
+        if(OSP_OK != post(tDemoInof->srcid,FILE_RECEIVE_UPLOAD_ACK,NULL
+              ,0,tDemoInof->srcnode)){
                 OspPrintf(1,0,"[FileReceiveUpload]post back failed\n");
                 printf("[FileReceiveUpload]post back failed\n");
                 //TODO:资源释放
@@ -563,15 +555,31 @@ void CSInstance::ReceiveRemove(CMessage* const pMsg){
         emFileStatus = STATUS_RECEIVE_REMOVE;
 }
 
-void CSInstance::FileGoOn(CMessage* const pMsg){
+void CSInstance::FileGoOnDeal(CMessage* const pMsg){
 
 #ifdef _LINUX_
-
      struct flock fl;
-     if(INVALID_FILEHANDLE == (file = open((LPCSTR)file_name_path,O_WRONLY | O_APPEND))){
+     TFileList *tFile;
+     TDemoInfo *tDemoInfo;
+
+     tDemoInfo = (TDemoInfo*)pMsg->content;
+     if(!CheckFileIn((LPCSTR)tDemoInfo->fileName,&tFile)){
+             OspLog(LOG_LVL_ERROR,"[FileGoOnDeal]file not in list\n");//客户端文件状态错误？
+             //TODO:error deal
+             return;
+     }
+
+     if(tFile->FileStatus != STATUS_CANCELLED){
+             OspLog(LOG_LVL_ERROR,"[FileGoOnDeal]file status error\n");
+             //TODO:error deal
+             return;
+    
+     }
+
+     if(INVALID_FILEHANDLE == (file = open((LPCSTR)tDemoInfo->fileName,O_WRONLY | O_APPEND))){
              //TODO:通知客户端
-             OspLog(LOG_LVL_ERROR,"file open error\n");
-             perror("open file error\n");
+             OspLog(LOG_LVL_ERROR,"[FileGoOnDeal]file open error\n");
+             perror("[FileGoOnDeal]open file error\n");
              return;
      }
      fl.l_type = F_WRLCK;
@@ -581,15 +589,16 @@ void CSInstance::FileGoOn(CMessage* const pMsg){
                  //the file grows
      if(fcntl(file,F_SETLK,&fl) == -1){
              if(errno == EACCES || errno == EAGAIN){//already locked
-                     OspLog(LOG_LVL_ERROR,"Already locked by anther process\n");
+                     OspLog(LOG_LVL_ERROR,"[FileGoOnDeal]Already locked by anther process\n");
+#if 0
                      if(OSP_OK != post(pMsg->srcid,FILE_LOCKED,NULL
                            ,0,pMsg->srcnode)){
                              OspPrintf(1,0,"post back failed\n");
                              printf("post back failed\n");
                      }
+#endif
                      return;
              }else{
-                     perror("FileGoOn\n");
                      OspLog(LOG_LVL_ERROR,"[FileGoOn]check file locking unexpected error\n");
 #if 0
                      //通知客户端
@@ -606,8 +615,8 @@ void CSInstance::FileGoOn(CMessage* const pMsg){
 #elif defined _MSC_VER
 #endif
 
-        if(OSP_OK != post(pMsg->srcid,FILE_GO_ON_ACK,NULL
-              ,0,pMsg->srcnode)){
+        if(OSP_OK != post(tDemoInfo->srcid,FILE_GO_ON_ACK,NULL
+              ,0,tDemoInfo->srcnode)){
                 OspPrintf(1,0,"post back failed\n");
                 printf("post back failed\n");
                 return;
@@ -622,6 +631,35 @@ void CSInstance::FileGoOn(CMessage* const pMsg){
 #endif
 
         emFileStatus = STATUS_UPLOADING;
+        NextState(RUNNING_STATE);
+}
+
+
+void CSInstance::FileGoOn(CMessage* const pMsg){
+
+        CSInstance *ins;
+        TDemoInfo tDemoInfo;
+
+        if(!CheckSign(pMsg->srcnode,NULL)){
+                 OspLog(LOG_LVL_ERROR,"[FileGoOn]not signed,sign in first\n");
+                 return;
+        }
+
+        ins = GetPendingIns();
+        if(!ins){
+                 OspLog(LOG_LVL_ERROR,"[FileGoOn]no pending instance,wait...\n");
+                 return;
+        }
+
+        tDemoInfo.srcid = pMsg->srcid;
+        tDemoInfo.srcnode = pMsg->srcnode;
+        strcpy((LPSTR)tDemoInfo.fileName,(LPCSTR)pMsg->content);
+        if(OSP_OK != post(MAKEIID(SERVER_APP_ID,ins->GetInsID()),FILE_GO_ON_DEAL
+                                ,&tDemoInfo,sizeof(tDemoInfo))){
+                OspPrintf(1,0,"[FileGoOn]post back failed\n");
+                printf("[FileGoOn]post back failed\n");
+                return;
+        }
 }
 
 void CSInstance::FileRemove(CMessage* const pMsg){
@@ -634,6 +672,8 @@ void CSInstance::FileRemove(CMessage* const pMsg){
                 //TODO：通知客户端
                 return;
         }
+        file = INVALID_FILEHANDLE;
+
         OspLog(SYS_LOG_LEVEL,"[FileRemove]file closed\n");
         if(unlink((LPCSTR)file_name_path) == 0){
                 OspLog(SYS_LOG_LEVEL,"[FileRemove]file removed\n");
@@ -713,6 +753,8 @@ void CSInstance::FileCancel(CMessage* const pMsg){
                 //TODO：通知客户端
                 return;
         }
+        file = INVALID_FILEHANDLE;
+
         OspLog(SYS_LOG_LEVEL,"[FileCancel]file closed\n");
 #elif defined _MSC_VER_
 #endif
@@ -786,6 +828,7 @@ void CSInstance::FileFinish(CMessage* const pMsg){
              //TODO：通知客户端
              return;
      }
+     file = INVALID_FILEHANDLE;
      OspLog(SYS_LOG_LEVEL,"[FileFinish]file closed\n");
 #elif defined _MSC_VER_
 #endif
@@ -809,22 +852,29 @@ void CSInstance::FileFinish(CMessage* const pMsg){
 void CSInstance::DealDisconnect(CMessage* const pMsg){
 
         //TODO:断开之后状态需要回收
-#if 1
-        struct list_head *tClientHead;
+        struct list_head *tClientHead,*tFileHead;
         TClientList *tnClient;
+        TFileList *tnFile;
 
         //客户端表清除
         list_for_each(tClientHead,&tClientList){
                 tnClient = list_entry(tClientHead,TClientList,tListHead);
                 free(tnClient);
         }
-	list_del_init(tClientHead);
+        list_del_init(&tClientList);
+        //TODO:需要修改
+        list_for_each(tFileHead,&tFileList){
+                tnFile = list_entry(tFileHead,TFileList,tListHead);
+                free(tnFile);
+        }
+        list_del_init(&tFileList);
+
 #if USE_CONNECT_FLAG 
         m_bConnectedFlag = false;
 #endif
 
         //TODO：断点续传
-#if 1
+#if 0
         if(file){
                 if(fclose(file) == 0){
                         OspLog(SYS_LOG_LEVEL,"[FileRemovelAck]file closed\n");
@@ -835,12 +885,23 @@ void CSInstance::DealDisconnect(CMessage* const pMsg){
                 }
         }
 #endif
+#ifdef _LINUX_
+        if(file != INVALID_FILEHANDLE){
+                if(-1 == close(file)){//record locks removed
+                        OspLog(LOG_LVL_ERROR,"[FileRemove]file close failed\n");
+                        //get the errno
+                        //TODO：通知客户端
+                        return;
+                }
+                file = INVALID_FILEHANDLE;
+        }
+#endif
+
         //需要配合文件的关闭回收
         emFileStatus = STATUS_INIT;
         NextState(IDLE_STATE);
         //m_wServerPort = SERVER_PORT;
         OspLog(SYS_LOG_LEVEL,"[DealDisconnect]disconnected\n");
-#endif
 }
 
 static bool CheckSign(u32 wClientId,TClientList **tClient){
@@ -880,3 +941,28 @@ static bool CheckFileIn(LPCSTR filename,TFileList **tFile){
         }
         return inFileList;
 }
+
+static CSInstance* GetPendingIns(){
+
+       u16 instCount;
+       CSInstance* pIns;
+
+       g_cCSApp.wLastIdleInstID %= MAX_INS_NUM;
+	   instCount = g_cCSApp.wLastIdleInstID;
+	   do{
+               instCount++;
+               pIns = (CSInstance*)((CApp*)&g_cCSApp)->GetInstance(instCount);
+               if( pIns->CurState() == CInstance::PENDING ) {
+                    break;
+               }
+               instCount %= MAX_INS_NUM;
+	   } while( instCount != g_cCSApp.wLastIdleInstID );
+
+	   if( instCount == g_cCSApp.wLastIdleInstID ){
+               //TODO:通知客户端，没有找到空闲实例
+               return NULL;
+       }
+	   g_cCSApp.wLastIdleInstID = instCount;
+       return pIns;
+}
+
