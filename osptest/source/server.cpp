@@ -22,6 +22,7 @@ typedef struct tagFileList{
         u8                     FileName[MAX_FILE_NAME_LENGTH];
         EM_FILE_STATUS         FileStatus;
         u16                    DealInstance;
+        u32                    wClientId;     //从属客户端
 }TFileList;
 
 //已登录客户端表
@@ -471,6 +472,11 @@ void CSInstance::SignOut(CMessage* const pMsg){
                  return;
         }
 
+        if(OSP_OK !=OspNodeDelDiscCB(pMsg->srcnode,SERVER_APP_ID,CInstance::DAEMON)){
+            OspLog(LOG_LVL_ERROR,"[SignOut]del discb failed\n");
+            return;
+        }
+
         if(OSP_OK != post(pMsg->srcid,SIGN_OUT_ACK,NULL
               ,0,pMsg->srcnode)){
                 OspPrintf(1,0,"[SignOut]post back failed\n");
@@ -773,13 +779,11 @@ void CSInstance::FileStableRemoveDeal(CMessage* const pMsg){
         if(unlink((LPCSTR)file_name_path) == 0){
                 OspLog(SYS_LOG_LEVEL,"[FileRemove]file removed\n");
                 emFileStatus = STATUS_REMOVED;
-#if 0
-                if(OSP_OK != post(pMsg->srcid,FILE_REMOVE_ACK
-                                    ,&stableFlag,sizeof(stableFlag),pMsg->srcnode)){
+                if(OSP_OK != post(tDemoInfo->srcid,FILE_REMOVE_ACK
+                                    ,&stableFlag,sizeof(stableFlag),tDemoInfo->srcnode)){
                         OspPrintf(1,0,"[FileRemove]post back failed\n");
                         printf("[FileRemove]post back failed\n");
                 }
-#endif
         }else{
                 OspLog(LOG_LVL_ERROR,"[FileRemove]file remove failed\n");
                 //TODO：通知客户端
@@ -957,59 +961,69 @@ void CSInstance::DealDisconnect(CMessage* const pMsg){
         struct list_head *tClientHead,*tFileHead,*templist;
         TClientList *tnClient;
         TFileList *tnFile;
+        u32 *dwsrcnode;
+        CSInstance *pIns;
 
-        //客户端表清除
-        list_for_each_safe(tClientHead,templist,&tClientList){
-                tnClient = list_entry(tClientHead,TClientList,tListHead);
-#if THREAD_SAFE_MALLOC
-                free(tnClient);
-#else
-                delete tnClient;
-#endif
+        dwsrcnode = (u32*)pMsg->content;
+        if(!dwsrcnode){
+             OspLog(LOG_LVL_ERROR,"[DealDisconnect]msg content is NULL\n");
+             return;
         }
-        list_del_init(&tClientList);
-        //TODO:需要修改
+
+        //删除文件表中相关文件，关闭文件描述符，释放instance
         list_for_each_safe(tFileHead,templist,&tFileList){
                 tnFile = list_entry(tFileHead,TFileList,tListHead);
-#if THREAD_SAFE_MALLOC
-                free(tnFile);
-#else
-                delete tnFile;
+                if(tnFile->wClientId == *dwsrcnode){
+                       pIns = (CSInstance*)((CApp*)&g_cCSApp)->GetInstance(tnFile->DealInstance);
+                       if(!pIns){
+                               OspLog(LOG_LVL_ERROR,"[DealDisconnect]get instance error\n");
+                               return;
+                       }
+                       if(pIns->file == INVALID_FILEHANDLE){
+#if _LINUX_
+                               if(-1 == close(file)){
+                                        OspLog(LOG_LVL_ERROR,"[DealDisconnect]file close failed\n");
+                                        return;
+                               }
+                               file = INVALID_FILEHANDLE;
 #endif
+                       }
+                       pIns->m_curState = CInstance::PENDING;
+                       pIns->emFileStatus = STATUS_INIT;
+                       list_del(&(tnFile->tListHead));
+#if THREAD_SAFE_MALLOC
+                       free(tnFile);
+#else
+                       delete tnFile;
+#endif
+
+                }
         }
-        list_del_init(&tFileList);
+
+        //删除客户端表中相关客户端
+        list_for_each_safe(tClientHead,templist,&tClientList){
+                tnClient = list_entry(tClientHead,TClientList,tListHead);
+                if(tnClient->wClientId == *dwsrcnode){
+                       list_del(&(tnClient->tListHead));
+#if THREAD_SAFE_MALLOC
+                       free(tnClient);
+#else
+                       delete tnClient;
+#endif
+                }
+        }
 
 #if USE_CONNECT_FLAG 
         m_bConnectedFlag = false;
 #endif
 
         //TODO：断点续传
-#if 0
-        if(file){
-                if(fclose(file) == 0){
-                        OspLog(SYS_LOG_LEVEL,"[FileRemovelAck]file closed\n");
-                        file = NULL;
-                }else{
-                        OspLog(LOG_LVL_ERROR,"[FileRemoveAck]file close failed\n");
-                        return;
-                }
+        //去除断链注册
+        if(OSP_OK != OspNodeDelDiscCB(*dwsrcnode,SERVER_APP_ID,CInstance::DAEMON)){
+               OspLog(LOG_LVL_ERROR,"[DealDisconnect]del discb failed\n");
         }
-#endif
-#ifdef _LINUX_
-        if(file != INVALID_FILEHANDLE){
-                if(-1 == close(file)){//record locks removed
-                        OspLog(LOG_LVL_ERROR,"[DealDisconnect]file close failed\n");
-                        //get the errno
-                        //TODO：通知客户端
-                        return;
-                }
-                file = INVALID_FILEHANDLE;
-        }
-#endif
 
         //需要配合文件的关闭回收
-        emFileStatus = STATUS_INIT;
-        NextState(IDLE_STATE);
         //m_wServerPort = SERVER_PORT;
         OspLog(SYS_LOG_LEVEL,"[DealDisconnect]disconnected\n");
 }

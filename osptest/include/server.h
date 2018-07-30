@@ -59,27 +59,24 @@
 const u8 SERVER_APP_PRI                  = 80;
 const u32 MAX_MSG_WAITING                = 512;
 
-typedef struct tagSinInfo{
-        s8 g_Username[AUTHORIZATION_NAME_SIZE];
-        s8 g_Passwd[AUTHORIZATION_NAME_SIZE];
-}TSinInfo;
-
 typedef enum tagEM_FILE_STATUS{
                 STATUS_INIT             = -1,
                 //processing state
-                STATUS_SEND_UPLOAD       = 0,
-                STATUS_SEND_CANCEL      = 1,
-                STATUS_SEND_REMOVE      = 2,
-                STATUS_RECEIVE_UPLOAD   = 3,
-                STATUS_RECEIVE_CANCEL   = 4,
-                STATUS_RECEIVE_REMOVE   = 5,
+                STATUS_UPLOAD_CMD       = 1,
+                STATUS_CANCEL_CMD       = 2,
+                STATUS_REMOVE_CMD       = 3,
+                STATUS_SEND_UPLOAD      = 4,
+                STATUS_SEND_CANCEL      = 5,
+                STATUS_SEND_REMOVE      = 6,
+                STATUS_RECEIVE_UPLOAD   = 7,
+                STATUS_RECEIVE_CANCEL   = 8,
+                STATUS_RECEIVE_REMOVE   = 9,
                 //stable state
-                STATUS_UPLOADING        = 6,
-                STATUS_CANCELLED        = 7,
-                STATUS_REMOVED          = 8,
-                STATUS_FINISHED         = 9 
+                STATUS_UPLOADING        = 10,
+                STATUS_CANCELLED        = 11,
+                STATUS_REMOVED          = 12,
+                STATUS_FINISHED         = 13
 }EM_FILE_STATUS;
-
 
 class CSInstance : public CInstance{
 
@@ -88,7 +85,6 @@ public:
 private:
         void DaemonInstanceEntry(CMessage *const pcMsg,CApp *pCApp);
         void InstanceEntry(CMessage *const);
-        bool CheckAuthorization(TSinInfo *tSinInfo,u32 dwLen);
 private:
         typedef struct tagCmdNode{
         u32         EventState;
@@ -99,27 +95,27 @@ private:
 
         EM_FILE_STATUS emFileStatus;
 
-        TSinInfo g_tSinInfo;
 //        FILE *file;
         FILEHANDLE file;
         tCmdNode *m_tCmdChain;
         tCmdNode *m_tCmdDaemonChain;
         s8       file_name_path[MAX_FILE_NAME_LENGTH];
         bool     m_bConnectedFlag;
-        bool     m_bSignFlag;
         u32      m_dwDisInsID;
 public:
         CSInstance():file(INVALID_FILEHANDLE),emFileStatus(STATUS_INIT)
                      ,m_tCmdChain(NULL),m_tCmdDaemonChain(NULL)
-                     ,m_bConnectedFlag(false)
-                     ,m_bSignFlag(false){
-                strcpy((LPSTR)g_tSinInfo.g_Username,"admin");
-                strcpy((LPSTR)g_tSinInfo.g_Passwd,"admin");
+                     ,m_bConnectedFlag(false){
                 memset(file_name_path,0,sizeof(u8)*MAX_FILE_NAME_LENGTH);
                 MsgProcessInit();
         };
         ~CSInstance(){
                 NodeChainEnd();
+                if(file == INVALID_FILEHANDLE){
+#if _LINUX_
+                        close(file);
+#endif
+                }
         }
         void MsgProcessInit();
         void NodeChainEnd();
