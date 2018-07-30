@@ -50,9 +50,9 @@ static bool CheckFileIn(LPCSTR filename,TFileList **tFile);
 int main(){
 
 #ifdef _MSC_VER
-        int ret = OspInit(TRUE,5500,"WindowsOspServer");
+        int ret = OspInit(TRUE,2501,"WindowsOspServer");
 #else
-        int ret = OspInit(TRUE,5500,"LinuxOspServer");
+        int ret = OspInit(TRUE,2501,"LinuxOspServer");
 #endif
 
         int i,j;
@@ -818,12 +818,13 @@ void CSInstance::DealDisconnect(CMessage* const pMsg){
                 tnClient = list_entry(tClientHead,TClientList,tListHead);
                 free(tnClient);
         }
+	list_del_init(tClientHead);
 #if USE_CONNECT_FLAG 
         m_bConnectedFlag = false;
 #endif
 
         //TODO：断点续传
-#if 0
+#if 1
         if(file){
                 if(fclose(file) == 0){
                         OspLog(SYS_LOG_LEVEL,"[FileRemovelAck]file closed\n");
