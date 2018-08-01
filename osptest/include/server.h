@@ -64,18 +64,21 @@ typedef enum tagEM_FILE_STATUS{
                 //processing state
                 STATUS_UPLOAD_CMD       = 1,
                 STATUS_CANCEL_CMD       = 2,
-                STATUS_REMOVE_CMD       = 3,
-                STATUS_SEND_UPLOAD      = 4,
-                STATUS_SEND_CANCEL      = 5,
-                STATUS_SEND_REMOVE      = 6,
-                STATUS_RECEIVE_UPLOAD   = 7,
-                STATUS_RECEIVE_CANCEL   = 8,
-                STATUS_RECEIVE_REMOVE   = 9,
+                STATUS_GO_ON_CMD         = 3,
+                STATUS_REMOVE_CMD       = 4,
+                STATUS_SEND_UPLOAD      = 5,
+                STATUS_SEND_CANCEL      = 6,
+                STATUS_SEND_GO_ON        = 7,
+                STATUS_SEND_REMOVE      = 8,
+                STATUS_RECEIVE_UPLOAD   = 9,
+                STATUS_RECEIVE_CANCEL   = 10,
+                STATUS_RECEIVE_GO_ON     = 11,
+                STATUS_RECEIVE_REMOVE   = 12,
                 //stable state
-                STATUS_UPLOADING        = 10,
-                STATUS_CANCELLED        = 11,
-                STATUS_REMOVED          = 12,
-                STATUS_FINISHED         = 13
+                STATUS_UPLOADING        = 13,
+                STATUS_CANCELLED        = 14,
+                STATUS_REMOVED          = 15,
+                STATUS_FINISHED         = 16
 }EM_FILE_STATUS;
 
 class CSInstance : public CInstance{
@@ -101,22 +104,25 @@ private:
         tCmdNode *m_tCmdDaemonChain;
         s8       file_name_path[MAX_FILE_NAME_LENGTH];
         bool     m_bConnectedFlag;
-        u32      m_dwDisInsID;
 public:
         CSInstance():file(INVALID_FILEHANDLE),emFileStatus(STATUS_INIT)
                      ,m_tCmdChain(NULL),m_tCmdDaemonChain(NULL)
-                     ,m_bConnectedFlag(false){
+                     ,m_bConnectedFlag(false)
+                     ,m_bSignInFlag(false){
                 memset(file_name_path,0,sizeof(u8)*MAX_FILE_NAME_LENGTH);
                 MsgProcessInit();
         };
         ~CSInstance(){
                 NodeChainEnd();
-                if(file == INVALID_FILEHANDLE){
+                if(file != INVALID_FILEHANDLE){
 #if _LINUX_
                         close(file);
+                        file = INVALID_FILEHANDLE;
 #endif
                 }
         }
+
+        bool m_bSignInFlag;
         void MsgProcessInit();
         void NodeChainEnd();
         bool RegMsgProFun(u32,MsgProcess,tCmdNode**);
