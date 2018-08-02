@@ -65,6 +65,7 @@ int main(){
         if(!ret){
                 OspPrintf(1,0,"[main]osp init failed\n");
                 printf("[main]osp init failed\n");
+                OspQuit();
         }
         g_cCSApp.CreateApp("OspServerApp",SERVER_APP_ID,SERVER_APP_PRI,MAX_MSG_WAITING);
         ret = OspCreateTcpNode(0,OSP_AGENT_SERVER_PORT);
@@ -368,6 +369,7 @@ void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){
 
        //立刻指定非空闲，防止再被其他任务查询到
        ins->m_curState = RUNNING_STATE;
+       ins->m_bSignInFlag = true;
 
        if(OSP_OK != post(MAKEIID(SERVER_APP_ID,ins->GetInsID()),FILE_RECEIVE_UPLOAD_DEAL
                                ,&tDemoInof,sizeof(TDemoInfo))){
@@ -407,12 +409,15 @@ void CSInstance::FileReceiveUpload(CMessage* const pMsg){
         tDemoInof = (TDemoInfo*)pMsg->content;
         strcpy(file_name_path,(LPCSTR)tDemoInof->fileName);
 
+        if(!m_bSignInFlag){
+                return;
+        }
+
         if(!CheckFileIn((LPCSTR)file_name_path,&tnFile)){
                 OspLog(LOG_LVL_ERROR,"[FileReceiveUpload]file is not in list:%s\n",file_name_path);
                 return;
         }
 
-        m_bSignInFlag = true;
 #ifdef _LINUX_
         struct flock fl;
         if(INVALID_FILEHANDLE == (file = open((LPCSTR)file_name_path,O_WRONLY | O_CREAT))){
@@ -516,12 +521,7 @@ void CSInstance::FileUpload(CMessage* const pMsg){
 #endif
      if(OSP_OK != post(pMsg->srcid,FILE_UPLOAD_ACK,&emFileStatus
            ,sizeof(emFileStatus),pMsg->srcnode)){
-             if(OSP_OK != post(MAKEIID(GetAppID(),DAEMON),OSP_DISCONNECT,&pMsg->srcnode
-                   ,sizeof(u32))){
-                   OspPrintf(1,0,"[FileUpload]post disconnect msg failed\n");
-             }
              OspPrintf(1,0,"[FileUpload]post back failed\n");
-             printf("[FileUpload]post back failed\n");
              return;
      }
 //     OspLog(SYS_LOG_LEVEL_REPEAT,"[FileUpload]Get data,send upload ack\n");
@@ -777,6 +777,7 @@ void CSInstance::FileGoOn(CMessage* const pMsg){
         tDemoInfo.srcnode = pMsg->srcnode;
         strcpy((LPSTR)tDemoInfo.fileName,(LPCSTR)pMsg->content);
         ins->m_curState = RUNNING_STATE;
+        ins->m_bSignInFlag = true;
         if(OSP_OK != post(MAKEIID(SERVER_APP_ID,ins->GetInsID()),FILE_GO_ON_DEAL
                                 ,&tDemoInfo,sizeof(tDemoInfo))){
                 OspPrintf(1,0,"[FileGoOn]post back failed\n");
@@ -797,7 +798,10 @@ void CSInstance::FileGoOnDeal(CMessage* const pMsg){
 
      tDemoInfo = (TDemoInfo*)pMsg->content;
 
-     m_bSignInFlag = true;
+     if(!m_bSignInFlag){
+             OspLog(LOG_LVL_ERROR,"[FileGoOnDeal]not sign in\n");
+     }
+
      strcpy(file_name_path,(LPCSTR)tDemoInfo->fileName);
      if(!CheckFileIn((LPCSTR)tDemoInfo->fileName,&tFile)){
              OspLog(LOG_LVL_ERROR,"[FileGoOnDeal]file not in list\n");//客户端文件状态错误？
@@ -923,6 +927,10 @@ void CSInstance::FileStableRemoveDeal(CMessage* const pMsg){
 
         tDemoInfo = (TDemoInfo*)pMsg->content;
 
+        if(!m_bSignInFlag){
+                OspLog(LOG_LVL_ERROR,"[FileStableRemoveDeal] not sign in\n");
+        }
+
         strcpy((LPSTR)file_name_path,(LPCSTR)tDemoInfo->fileName);
 #ifdef _LINUX_
         if(unlink((LPCSTR)file_name_path) == 0){
@@ -1005,7 +1013,7 @@ void CSInstance::FileStableRemove(CMessage* const pMsg){
 #if 0
                 if(OSP_OK != post(MAKEIID(GetAppID(),GetInsID()),FILE_STABLE_REMOVE
                                ,pMsg->content,pMsg->length)){
-                        OspLog(LOG_LVL_ERROR,"[ReceiveCancel] post error\n");
+                        OspLog(LOG_LVL_ERROR,"[FileStableRemove] post error\n");
                         return;
                 }
 #endif
@@ -1036,6 +1044,7 @@ void CSInstance::FileStableRemove(CMessage* const pMsg){
         strcpy((LPSTR)tDemoInfo.fileName,(LPCSTR)pMsg->content);
 
         ins->m_curState = RUNNING_STATE;
+        ins->m_bSignInFlag = true;
         if(OSP_OK != post(MAKEIID(SERVER_APP_ID,ins->GetInsID()),FILE_STABLE_REMOVE_DEAL
                                 ,&tDemoInfo,sizeof(tDemoInfo))){
                 OspPrintf(1,0,"[FileStableRemove]post back failed\n");
@@ -1105,7 +1114,7 @@ void CSInstance::DealDisconnect(CMessage* const pMsg){
         u32 dwsrcnode;
         CSInstance *pIns;
 
-        if(!pMsg->content || pMsg->length <= 0){
+        if(pMsg->length <= 0 || !pMsg->content){
                 OspLog(LOG_LVL_ERROR,"[DealDisconnect]msg is NULL\n");
                 return;
         }
@@ -1117,7 +1126,10 @@ void CSInstance::DealDisconnect(CMessage* const pMsg){
                 if(tnFile->wClientId == dwsrcnode){
                        OspLog(SYS_LOG_LEVEL,"[DealDisconnect]del from file list:%s\n",tnFile->FileName);
                        pIns = (CSInstance*)((CApp*)&g_cCSApp)->GetInstance(tnFile->DealInstance);
-
+                       if(!pIns){
+                               OspLog(LOG_LVL_ERROR,"[DealDisconnect]get ins error\n");
+                               continue;
+                       }
                        if(pIns->file != INVALID_FILEHANDLE){
 #if _LINUX_
                                if(-1 == close(file)){
@@ -1133,7 +1145,7 @@ void CSInstance::DealDisconnect(CMessage* const pMsg){
                                return;
                        }
                        pIns->m_bSignInFlag = false;
-                       pIns->m_curState = CInstance::PENDING;
+                       pIns->m_curState = IDLE_STATE;
                        pIns->emFileStatus = STATUS_INIT;
                        list_del(&(tnFile->tListHead));
 #if THREAD_SAFE_MALLOC
@@ -1241,11 +1253,13 @@ void CSInstance::SignIn(CMessage *const pMsg){
        TUserList *tnUser;
        TClientList *tnClient,*tClient;
        bool inUserList;
+       u16 wClientAck = 0;
 
        if(!pMsg->content || pMsg->length <= 0){
                //通知客户端
                 OspLog(LOG_LVL_ERROR,"[SignIn] pMsg is NULL\n");
-                return;
+                wClientAck = -1;
+                goto post2client;
        }
        
        inUserList = false;
@@ -1261,7 +1275,8 @@ void CSInstance::SignIn(CMessage *const pMsg){
 #endif
                        if(!tClient){
                             OspLog(LOG_LVL_ERROR,"[SignIn]client list malloc failed\n");
-                            return;
+                            wClientAck = -2;
+                            goto post2client;
                        }
                        //是否在客户端表中
                        if(!CheckSign(pMsg->srcnode,NULL)){
@@ -1270,29 +1285,14 @@ void CSInstance::SignIn(CMessage *const pMsg){
                                printf("srcnode:%d\ndstnode:%d\n",pMsg->srcnode,pMsg->dstnode);
                                list_add(&tClient->tListHead,&tClientList);
                        }
-                       if(!CheckSign(pMsg->srcnode,NULL)){
-                               printf("error\n");
-                       }
                        inUserList = true;
                        break;
                }
        }
-       if(inUserList){
-               if(OSP_OK != post(pMsg->srcid,SIGN_IN_ACK,"succeed"
-                                     ,strlen("succeed")+1,pMsg->srcnode)){
-                       OspPrintf(1,0,"[SignIn]post back failed\n");
-                       printf("[SignIn]post back failed\n");
-                       return;
-               }
-       }else{
-               if(OSP_OK != post(pMsg->srcid,SIGN_IN_ACK,"failed"
-                                       ,strlen("failed")+1,pMsg->srcnode)){
-                       //TODO:error deal
-                       OspPrintf(1,0,"[SignIn]post back failed\n");
-                       printf("[SignIn]post back failed\n");
-               }
+       if(!inUserList){
+               wClientAck = -3;
                OspLog(SYS_LOG_LEVEL,"[SignIn]sign in failed\n");
-               return;
+               goto post2client;
        }
 
 #if USE_CONNECT_FLAG 
@@ -1302,15 +1302,25 @@ void CSInstance::SignIn(CMessage *const pMsg){
         //断链注册
        if(OSP_OK !=OspNodeDiscCBRegQ(pMsg->srcnode,SERVER_APP_ID,CInstance::DAEMON)){
            OspLog(LOG_LVL_ERROR,"[SignIn]regis disconnect error\n");
-           return;
+           wClientAck = -4;
+               goto post2client;
        }
- 
        OspLog(SYS_LOG_LEVEL,"[SignIn]sign in\n");
+
+post2client:
+       if(OSP_OK != post(pMsg->srcid,SIGN_IN_ACK,&wClientAck,sizeof(wClientAck),pMsg->srcnode)){
+               OspLog(SYS_LOG_LEVEL,"[SignIn]post back:%d\n",wClientAck);
+       }
+       return;
 }
 
 void CSInstance::SignOut(CMessage* const pMsg){
 
         TClientList* tClient;
+        struct list_head *tFileHead,*templist;
+        TFileList *tnFile;
+        CSInstance *pIns;
+        u16 wClientAck = 0;
 
 #if USE_CONNECT_FLAG 
         if(!m_bConnectedFlag){
@@ -1321,20 +1331,53 @@ void CSInstance::SignOut(CMessage* const pMsg){
 #endif
         if(!CheckSign(pMsg->srcnode,&tClient)){
                  OspLog(LOG_LVL_ERROR,"[SignOut]not signed,sign in first\n");
-                 //TODO:通知客户端
-                 return;
+                 wClientAck = -1;
+                 goto post2client;
         }
 
         if(OSP_OK !=OspNodeDelDiscCB(pMsg->srcnode,SERVER_APP_ID,CInstance::DAEMON)){
-            OspLog(LOG_LVL_ERROR,"[SignOut]del discb failed\n");
-            return;
+                 OspLog(LOG_LVL_ERROR,"[SignOut]del discb failed\n");
         }
 
-        if(OSP_OK != post(pMsg->srcid,SIGN_OUT_ACK,NULL
-              ,0,pMsg->srcnode)){
-                OspPrintf(1,0,"[SignOut]post back failed\n");
-                printf("[SignOut]post back failed\n");
-                return;
+        list_for_each_safe(tFileHead,templist,&tFileList){
+                tnFile = list_entry(tFileHead,TFileList,tListHead);
+                if(tnFile->wClientId == pMsg->srcnode){
+                       pIns = (CSInstance*)((CApp*)&g_cCSApp)->GetInstance(tnFile->DealInstance);
+                       if(!pIns){
+                               OspLog(LOG_LVL_ERROR,"[SignOut]get ins error\n");
+                               continue;
+                       }
+                       if(tnFile->FileStatus == STATUS_UPLOADING){
+                                tnFile->FileStatus = STATUS_CANCELLED;
+//                                pIns->emFileStatus = STATUS_CANCELLED;
+                                pIns->m_curState = IDLE_STATE;
+                                if(INVALID_FILEHANDLE != pIns->file){
+                                        if(close(pIns->file) == -1){
+                                                OspLog(LOG_LVL_ERROR,"[SignOut]file close failed\n");
+                                        }else{
+                                                OspLog(SYS_LOG_LEVEL,"[SignOut]file closed\n");
+                                        }
+                                        file = INVALID_FILEHANDLE;
+                                }
+                                continue;
+                        }
+
+                        if(tnFile->FileStatus >= STATUS_CANCELLED)
+                                continue;
+
+                        tnFile->FileStatus = STATUS_INIT;
+                        pIns->m_curState = IDLE_STATE;
+                        pIns->emFileStatus = STATUS_INIT;
+                        pIns->m_bSignInFlag = false;
+                        if(pIns->file){
+                                if(close(pIns->file) == -1){
+                                        OspLog(LOG_LVL_ERROR,"[SignOut]file close failed\n");
+                                }else{
+                                        OspLog(SYS_LOG_LEVEL,"[SignOut]file closed\n");
+                                }
+                                pIns->file = INVALID_FILEHANDLE;
+                        }
+                }
         }
 
         list_del(&(tClient->tListHead));
@@ -1344,5 +1387,12 @@ void CSInstance::SignOut(CMessage* const pMsg){
         delete tClient;
 #endif
         OspLog(SYS_LOG_LEVEL,"[SignOut]sign out\n");
+
+post2client:
+        if(OSP_OK != post(pMsg->srcid,SIGN_OUT_ACK,&wClientAck
+              ,sizeof(wClientAck),pMsg->srcnode)){
+                OspPrintf(1,0,"[SignOut]post back failed\n");
+        }
+        return;
 }
 
