@@ -50,6 +50,7 @@ static bool CheckSign(u32 wClientId,TClientList **tClient);
 static bool CheckFileIn(LPCSTR filename,TFileList **tFile);
 static CSInstance* GetPendingIns();
 
+static s16 wClientAck;
 
 int main(){
 
@@ -513,7 +514,6 @@ void CSInstance::FileUpload(CMessage* const pMsg){
 #endif
      }
      //TODO:需要增加返回信息，为客户端文件传送进度显示做依据。
-     printf("get files\n");
 #if 0
      if(emFileStatus == STATUS_RECEIVE_UPLOAD){
         emFileStatus = STATUS_UPLOADING;
@@ -1253,8 +1253,8 @@ void CSInstance::SignIn(CMessage *const pMsg){
        TUserList *tnUser;
        TClientList *tnClient,*tClient;
        bool inUserList;
-       u16 wClientAck = 0;
 
+       wClientAck = 0;
        if(!pMsg->content || pMsg->length <= 0){
                //通知客户端
                 OspLog(LOG_LVL_ERROR,"[SignIn] pMsg is NULL\n");
@@ -1301,8 +1301,8 @@ void CSInstance::SignIn(CMessage *const pMsg){
 
         //断链注册
        if(OSP_OK !=OspNodeDiscCBRegQ(pMsg->srcnode,SERVER_APP_ID,CInstance::DAEMON)){
-           OspLog(LOG_LVL_ERROR,"[SignIn]regis disconnect error\n");
-           wClientAck = -4;
+               OspLog(LOG_LVL_ERROR,"[SignIn]regis disconnect error\n");
+               wClientAck = -4;
                goto post2client;
        }
        OspLog(SYS_LOG_LEVEL,"[SignIn]sign in\n");
@@ -1320,7 +1320,7 @@ void CSInstance::SignOut(CMessage* const pMsg){
         struct list_head *tFileHead,*templist;
         TFileList *tnFile;
         CSInstance *pIns;
-        u16 wClientAck = 0;
+        wClientAck = 0;
 
 #if USE_CONNECT_FLAG 
         if(!m_bConnectedFlag){
