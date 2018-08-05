@@ -143,7 +143,9 @@ public:
 
         void notifyConnected(CMessage* const);
         void DaemonFileReceiveUpload(CMessage*const);
+#if 0
         void FileGoOnDeal(CMessage*const);
+#endif
         void FileStableRemoveDeal(CMessage*const);
 
         //断链检测处理函数
