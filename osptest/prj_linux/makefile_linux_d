@@ -19,7 +19,7 @@ CURDIR := ./
 
 ## Name and type of the target for this Makefile
 
-APP_TARGET      := osptest.linux
+APP_TARGET      := server.linux
 
 ## Define debugging symbols
 DEBUG = 0

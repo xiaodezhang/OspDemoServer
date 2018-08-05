@@ -81,6 +81,7 @@ int main(){
                 printf("[main]osp init failed\n");
                 OspQuit();
         }
+        OspSetPrompt("server");
         g_cCSApp.CreateApp("OspServerApp",SERVER_APP_ID,SERVER_APP_PRI,MAX_MSG_WAITING);
         ret = OspCreateTcpNode(0,OSP_AGENT_SERVER_PORT);
 
@@ -450,7 +451,7 @@ void CSInstance::FileReceiveUpload(CMessage* const pMsg){
         struct flock fl;
         if(INVALID_FILEHANDLE == (file = open((LPCSTR)file_name_path
                         ,O_WRONLY | (tDemoInfo->appendFlag ? O_APPEND : O_CREAT),S_IRWXU))){
-                //TODO:通知客户端,get the errno
+                //TODO:get the errno
                 OspLog(LOG_LVL_ERROR,"[FileReceiveUpload]file open error\n");
                 wClientAck = 10;
                 goto post2client;
@@ -469,14 +470,22 @@ void CSInstance::FileReceiveUpload(CMessage* const pMsg){
                         wClientAck = 12;
                 }
                 close(file);
+                file = INVALID_FILEHANDLE;
                 goto post2client;
         }
+
+#elif defined _MSC_VER
+        if(INVALID_FILEHANDLE == (file = fopen((LPCSTR)file_name_path
+                                        ,tDemoInfo->appendFlag ? "ab" : "rb"))){
+                OspLog(LOG_LVL_ERROR,"[FileReceiveUpload]file open error\n");
+                wClientAck = 10;
+                goto post2client;
+        }
+
+#endif
         emFileStatus = STATUS_UPLOADING;
         tnFile->FileStatus = STATUS_UPLOADING;
         OspLog(SYS_LOG_LEVEL,"[FileReceiveUpload]send upload ack\n");
-
-#elif defined _MSC_VER
-#endif
 
 post2client:
         if(wClientAck){
@@ -512,23 +521,17 @@ void CSInstance::FileUpload(CMessage* const pMsg){
              wClientAck = 13;
              goto post2client;
      }
-#if 0
-     if(fwrite(pMsg->content,1,sizeof(s8)*pMsg->length,file)
-                     != pMsg->length || ferror(file)){
-             OspLog(LOG_LVL_ERROR,"file upload write error\n");
-             //TODO:通知客户端
-             return;
-     };
-#endif
 #ifdef _LINUX_
      if(-1 == write(file,pMsg->content,sizeof(s8)*pMsg->length)){
+#elif defined _MSC_VER
+     if(fwrite(pMsg->content,1,sizeof(s8)*pMsg->length,file)
+                     != pMsg->length || ferror(file)){
+#endif
              //TODO:print errno
              OspLog(LOG_LVL_ERROR,"[FileUpload]file upload write error\n");
              wClientAck = 14;
              goto post2client;
      }
-#elif defined _MSC_VER
-#endif
 
 post2client:
 
@@ -537,7 +540,12 @@ post2client:
                 list_del(&tnFile->tListHead);
                 delete tnFile;
                 NextState(IDLE_STATE);
+#ifdef _LINUX_
                 close(file);
+#elif defined _MSV_VER
+                fclose(file);
+#endif
+                file = INVALID_FILEHANDLE;
         }
         tUploadAck.wClientAck = wClientAck;
         tUploadAck.emFileStatus = emFileStatus;
@@ -557,57 +565,34 @@ void CSInstance::FileFinish(CMessage* const pMsg){
      if(!pMsg->content && pMsg->length > 0){
              wClientAck = 1;
      }else{
-#if 0
-             if(fwrite(pMsg->content,1,sizeof(s8)*pMsg->length,file)
-                             != pMsg->length || ferror(file)){
-                     OspLog(LOG_LVL_ERROR,"file upload write error\n");
-                     NextState(IDLE_STATE);
-                     if(fclose(file) == 0){
-                             OspLog(SYS_LOG_LEVEL,"[FileFinish]file closed\n");
-
-                     }else{
-                             OspLog(LOG_LVL_ERROR,"[FileFinish]file close failed\n");
-                             //TODO：通知客户端
-                     }
-                     //TODO:通知客户端
-                     return;
-             }
-#endif
 #ifdef _LINUX_
              if(-1 == write(file,pMsg->content,sizeof(s8)*pMsg->length)){
+#elif defined _MSC_VER
+             if(fwrite(pMsg->content,1,sizeof(s8)*pMsg->length,file)
+                             != pMsg->length || ferror(file)){
+#endif
                      //TODO:print errno
                      OspLog(LOG_LVL_ERROR,"[FileFinish] write error\n");
                      wClientAck = 2;
-                     goto post2client;
              }
-#elif defined _MSC_VER
-#endif
 
      }
-
      NextState(IDLE_STATE);
-#if 0
-     if(fclose(file) == 0){
-             OspLog(SYS_LOG_LEVEL,"[FileFinish]file closed\n");
-
-     }else{
-             OspLog(LOG_LVL_ERROR,"[FileFinish]file close failed\n");
-             //TODO：通知客户端
-     }
-#endif
 #ifdef _LINUX_
      close(file);
+#elif defined _MSC_VER_
+     fclose(file);
+#endif
      file = INVALID_FILEHANDLE;
      OspLog(SYS_LOG_LEVEL,"[FileFinish]file closed\n");
-#elif defined _MSC_VER_
-#endif
 
-     emFileStatus = STATUS_FINISHED;
-     CheckFileIn((LPCSTR)file_name_path,&tFile);
-     tFile->FileStatus = STATUS_FINISHED;
-     OspLog(SYS_LOG_LEVEL,"[FileFinish]file finished\n");
+     if(wClientAck == 0){
+             emFileStatus = STATUS_FINISHED;
+             CheckFileIn((LPCSTR)file_name_path,&tFile);
+             tFile->FileStatus = STATUS_FINISHED;
+             OspLog(SYS_LOG_LEVEL,"[FileFinish]file finished\n");
+     }
 
-post2client:
      if(OSP_OK != post(pMsg->srcid,FILE_FINISH_ACK,&wClientAck
            ,sizeof(wClientAck),pMsg->srcnode)){
              OspPrintf(1,0,"post back failed\n");
@@ -693,7 +678,11 @@ void CSInstance::FileCancel(CMessage* const pMsg){
         }
 #endif
 #ifdef _LINUX_
-        if(-1 == close(file)){//record locks removed
+        if(INVALID_FILEHANDLE == close(file)){//record locks removed
+#elif defined _MSC_VER_
+        if(INVALID_FILEHANDLE == fclose(file)){//record locks removed
+
+#endif
                 OspLog(LOG_LVL_ERROR,"[FileCancel]file close failed\n");
                 wClientAck = 7;
                 goto post2client;
@@ -702,8 +691,6 @@ void CSInstance::FileCancel(CMessage* const pMsg){
         file = INVALID_FILEHANDLE;
 
         OspLog(SYS_LOG_LEVEL,"[FileCancel]file closed\n");
-#elif defined _MSC_VER_
-#endif
 
         CheckFileIn((LPCSTR)file_name_path,&tFile);
 
@@ -974,7 +961,7 @@ void CSInstance::FileRemove(CMessage* const pMsg){
         tRemoveAck.stableFlag = true;
         NextState(IDLE_STATE);
 #ifdef _LINUX_
-        if(-1 == close(file)){//record locks removed
+        if(INVALID_FILEHANDLE == close(file)){//record locks removed
                 OspLog(LOG_LVL_ERROR,"[FileRemove]file close failed\n");
         }
         file = INVALID_FILEHANDLE;
@@ -1000,6 +987,23 @@ void CSInstance::FileRemove(CMessage* const pMsg){
         }
 
 #elif defined _MSC_VER_
+        if(INVALID_FILEHANDLE == fclose(file)){
+                OspLog(LOG_LVL_ERROR,"[FileRemove]file close failed\n");
+        }
+        file = INVALID_FILEHANDLE;
+        OspLog(SYS_LOG_LEVEL,"[FileRemove]file closed\n");
+        if(remove((LPCSTR)file_name_path) == -1){
+               OspLog(LOG_LVL_ERROR,"[FileRemove]file remove failed\n");
+        }else{
+               OspLog(SYS_LOG_LEVEL,"[FileRemove]file removed\n");
+               tRemoveAck.wClientAck = 11;
+               if(OSP_OK != post(pMsg->srcid,FILE_REMOVE_ACK
+                                       ,&tRemoveAck,sizeof(tRemoveAck),pMsg->srcnode)){
+                       OspLog(SYS_LOG_LEVEL,"[FileStableRemoveDeal]post back,clientack:%d\n",tRemoveAck.wClientAck);
+               }
+               return;
+        }
+
 #endif
         emFileStatus = STATUS_REMOVED;
         tFile->FileStatus = STATUS_REMOVED;
@@ -1182,12 +1186,14 @@ void CSInstance::DealDisconnect(CMessage* const pMsg){
                        }
                        if(pIns->file != INVALID_FILEHANDLE){
 #if _LINUX_
-                               if(-1 == close(file)){
+                               if(INVALID_FILEHANDLE == close(file)){
+#elif defined _MSC_VER
+                               if(INVALID_FILEHANDLE == fclose(file)){
+#endif
                                         OspLog(LOG_LVL_ERROR,"[DealDisconnect]file close failed\n");
                                         perror("[DealDisconnect]:");
                                }
                                file = INVALID_FILEHANDLE;
-#endif
                        }
 
                        if(!pIns){
