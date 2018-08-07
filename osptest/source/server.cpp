@@ -30,20 +30,20 @@ typedef struct tagFileList{
 typedef struct tagClientList{
         struct list_head       tListHead;
         u32                    wClientId;     //客户端node作为id
-        s8                     chUserName[MAX_USER_NAME_LENGTH+1];
+        u8                     chUserName[MAX_USER_NAME_LENGTH+1];
 }TClientList;
 
 typedef struct tagUserList{
         struct list_head       tListHead;
-        s8                     chUserName[MAX_USER_NAME_LENGTH+1];
-        s8                     chPasswd[MAX_PASSWD_LENGTH+1];
+        u8                     chUserName[MAX_USER_NAME_LENGTH+1];
+        u8                     chPasswd[MAX_PASSWD_LENGTH+1];
         u16                    level;   //定义用户权限
 }TUserList;
 
 typedef struct tagDemoInfo{
         u32                    srcid;
         u32                    srcnode;
-        s8                     fileName[MAX_FILE_NAME_LENGTH];
+        u8                     fileName[MAX_FILE_NAME_LENGTH];
         bool                   appendFlag;
 }TDemoInfo;
 
@@ -54,7 +54,7 @@ typedef struct tagUploadAck{
 
 typedef struct tagRemoveAck{
         bool           stableFlag;
-        u16            wClientAck;
+        s16            wClientAck;
 }TRemoveAck;
 
 static bool CheckSign(u32 wClientId,TClientList **tClient);
@@ -125,8 +125,8 @@ int main(){
                         printf("[main]user name too long\n");
                         return -1;
                 }
-                strcpy(tUsers[i]->chUserName,names[i]);
-                strcpy(tUsers[i]->chPasswd,"admin");
+                strcpy((LPSTR)tUsers[i]->chUserName,names[i]);
+                strcpy((LPSTR)tUsers[i]->chPasswd,"admin");
                 list_add(&(tUsers[i]->tListHead),&tUserList);
         }
 
@@ -384,7 +384,7 @@ void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){
        tDemoInfo.srcid = pMsg->srcid;
        tDemoInfo.srcnode = pMsg->srcnode;
        tDemoInfo.appendFlag = false;
-       strcpy(tDemoInfo.fileName,(LPCSTR)pMsg->content);
+       strcpy((LPSTR)tDemoInfo.fileName,(LPCSTR)pMsg->content);
 
        //立刻指定非空闲，防止再被其他任务查询到
        ins->m_curState = RUNNING_STATE;
@@ -437,7 +437,7 @@ void CSInstance::FileReceiveUpload(CMessage* const pMsg){
         TDemoInfo *tDemoInfo;
 
         tDemoInfo = (TDemoInfo*)pMsg->content;
-        strcpy(file_name_path,(LPCSTR)tDemoInfo->fileName);
+        strcpy((LPSTR)file_name_path,(LPCSTR)tDemoInfo->fileName);
 
         wClientAck = 0;
 
@@ -485,7 +485,6 @@ void CSInstance::FileReceiveUpload(CMessage* const pMsg){
 #endif
         emFileStatus = STATUS_UPLOADING;
         tnFile->FileStatus = STATUS_UPLOADING;
-        OspLog(SYS_LOG_LEVEL,"[FileReceiveUpload]send upload ack\n");
 
 post2client:
         if(wClientAck){
@@ -503,7 +502,9 @@ post2client:
                 OspPrintf(1,0,"[FileReceiveUpload]post back failed\n");
                 return;
         }
-
+        if(wClientAck == 0){
+                OspLog(SYS_LOG_LEVEL,"send file upload ack\n");
+        }
         return;
 }
 
@@ -612,7 +613,7 @@ void CSInstance::ReceiveCancel(CMessage* const pMsg){
                 wClientAck = 1;
                 goto postError2client;
         }
-        strcpy(file_name_path,(LPCSTR)pMsg->content);
+        strcpy((LPSTR)file_name_path,(LPCSTR)pMsg->content);
         if(!CheckFileIn((LPCSTR)pMsg->content,&tFile)){
                 OspLog(LOG_LVL_ERROR,"[ReceiveCancel]file not in list\n");
                 wClientAck = 2;
@@ -719,7 +720,7 @@ void CSInstance::ReceiveRemove(CMessage* const pMsg){
                 goto postError2client;
         }
 
-        strcpy(file_name_path,(LPCSTR)pMsg->content);
+        strcpy((LPSTR)file_name_path,(LPCSTR)pMsg->content);
         if(!CheckFileIn((LPCSTR)file_name_path,&tFile)){
                 OspLog(LOG_LVL_ERROR,"[ReceiveRemove]file not in list\n");
                 wClientAck = 2;

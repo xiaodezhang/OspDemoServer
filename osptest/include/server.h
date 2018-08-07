@@ -102,7 +102,7 @@ private:
         FILEHANDLE file;
         tCmdNode *m_tCmdChain;
         tCmdNode *m_tCmdDaemonChain;
-        s8       file_name_path[MAX_FILE_NAME_LENGTH];
+        u8       file_name_path[MAX_FILE_NAME_LENGTH];
         bool     m_bConnectedFlag;
 public:
         CSInstance():file(INVALID_FILEHANDLE),emFileStatus(STATUS_INIT)
