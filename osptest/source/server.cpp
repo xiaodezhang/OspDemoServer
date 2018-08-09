@@ -312,11 +312,13 @@ bool CSInstance::FindProcess(u32 EventState,MsgProcess* c_MsgProcess,tCmdNode* t
         return false;
 }
 
-void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){
+void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){ 
 
         TFileList *tnFile;
         TDemoInfo tDemoInfo;
         CSInstance *ins;
+        u8 wFileName[MAX_FILE_NAME_LENGTH];
+        LPSTR p;
 
         wClientAck = 0;
 #if USE_CONNECT_FLAG 
@@ -344,14 +346,26 @@ void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){
                 goto postError2client;
         }
 
+        //absolute path deal
+        if((p = strrchr((LPSTR)pMsg->content,'/'))){
+                strcpy((LPSTR)wFileName,p+1);
+        }else{
+                strcpy((LPSTR)wFileName,(LPCSTR)pMsg->content);
+        }
+
+        if((p = strrchr((LPSTR)pMsg->content,'\\'))){
+                strcpy((LPSTR)wFileName,p+1);
+        }else{
+                strcpy((LPSTR)wFileName,(LPCSTR)pMsg->content);
+        }
 
         //确认文件没有被其他Instance占用
         //TODO: 其他状态的确认
-        if(CheckFileIn((LPCSTR)pMsg->content,&tnFile)){
+        if(CheckFileIn((LPCSTR)wFileName,&tnFile)){
                 if(STATUS_FINISHED != tnFile->FileStatus  //文件被其他instance占用
                                 && STATUS_REMOVED != tnFile->FileStatus){
                         OspLog(SYS_LOG_LEVEL,"[DaemonFileReceiveUpload]file being operated:%s\n",
-                                        pMsg->content);
+                                        wFileName);
                         wClientAck = 4;
                         goto postError2client;
                 }else{
@@ -366,7 +380,7 @@ void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){
                 }
         }
 
-        if(access((LPCSTR)pMsg->content,F_OK) != -1){
+        if(access((LPCSTR)wFileName,F_OK) != -1){
                 OspLog(SYS_LOG_LEVEL,"[DaemonFileReceiveUpload]file exists\n");
               //文件已存在
 #if 0
@@ -384,7 +398,7 @@ void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){
        tDemoInfo.srcid = pMsg->srcid;
        tDemoInfo.srcnode = pMsg->srcnode;
        tDemoInfo.appendFlag = false;
-       strcpy((LPSTR)tDemoInfo.fileName,(LPCSTR)pMsg->content);
+       strcpy((LPSTR)tDemoInfo.fileName,(LPCSTR)wFileName);
 
        //立刻指定非空闲，防止再被其他任务查询到
        ins->m_curState = RUNNING_STATE;
@@ -413,7 +427,7 @@ void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){
                }
                list_add(&tnFile->tListHead,&tFileList);
        }
-       strcpy((LPSTR)tnFile->FileName,(LPCSTR)pMsg->content);
+       strcpy((LPSTR)tnFile->FileName,(LPCSTR)wFileName);
        tnFile->FileStatus = STATUS_RECEIVE_UPLOAD;
        tnFile->DealInstance = ins->GetInsID();
        tnFile->wClientId = pMsg->srcnode;
@@ -774,6 +788,8 @@ void CSInstance::FileGoOn(CMessage* const pMsg){
         CSInstance *ins;
         TDemoInfo tDemoInfo;
         TFileList *tnFile;
+        u8 wFileName[MAX_FILE_NAME_LENGTH];
+        LPCSTR p;
 
         wClientAck = 0;
         if(!pMsg->content || pMsg->length <= 0){
@@ -789,13 +805,26 @@ void CSInstance::FileGoOn(CMessage* const pMsg){
                 goto postError2client;
         }
 
+        //absolute path deal
+        if((p = strrchr((LPSTR)pMsg->content,'/'))){
+                strcpy((LPSTR)wFileName,p+1);
+        }else{
+                strcpy((LPSTR)wFileName,(LPCSTR)pMsg->content);
+        }
+
+        if((p = strrchr((LPSTR)pMsg->content,'\\'))){
+                strcpy((LPSTR)wFileName,p+1);
+        }else{
+                strcpy((LPSTR)wFileName,(LPCSTR)pMsg->content);
+        }
+
         if(!CheckSign(pMsg->srcnode,NULL)){
                  OspLog(LOG_LVL_ERROR,"[FileGoOn]not signed,sign in first\n");
                  wClientAck = 3;
                  goto postError2client;
         }
 
-        if(!CheckFileIn((LPCSTR)pMsg->content,&tnFile)){
+        if(!CheckFileIn((LPCSTR)wFileName,&tnFile)){
                  OspLog(LOG_LVL_ERROR,"[FileGoOn]file is not in the list\n");
                  wClientAck = 4;
                  goto postError2client;
@@ -844,7 +873,7 @@ void CSInstance::FileGoOn(CMessage* const pMsg){
         tDemoInfo.srcid = pMsg->srcid;
         tDemoInfo.srcnode = pMsg->srcnode;
         tDemoInfo.appendFlag = true;
-        strcpy((LPSTR)tDemoInfo.fileName,(LPCSTR)pMsg->content);
+        strcpy((LPSTR)tDemoInfo.fileName,(LPCSTR)wFileName);
         ins->m_curState = RUNNING_STATE;
         ins->m_bSignInFlag = true;
         if(OSP_OK != post(MAKEIID(SERVER_APP_ID,ins->GetInsID()),FILE_RECEIVE_UPLOAD_DEAL
@@ -1017,6 +1046,8 @@ void CSInstance::FileStableRemove(CMessage* const pMsg){
         CSInstance *ins;
         TDemoInfo tDemoInfo;
         TFileList *tnFile;
+        u8 wFileName[MAX_FILE_NAME_LENGTH];
+        LPCSTR p;
 
         wClientAck = 0;
         if(!pMsg->content || pMsg->length <= 0){
@@ -1032,13 +1063,28 @@ void CSInstance::FileStableRemove(CMessage* const pMsg){
                  goto postError2gui;
         }
 
+        //absolute path deal
+        if((p = strrchr((LPSTR)pMsg->content,'/'))){
+                strcpy((LPSTR)wFileName,p+1);
+        }else{
+                strcpy((LPSTR)wFileName,(LPCSTR)pMsg->content);
+        }
+
+        if((p = strrchr((LPSTR)pMsg->content,'\\'))){
+                strcpy((LPSTR)wFileName,p+1);
+        }else{
+                strcpy((LPSTR)wFileName,(LPCSTR)pMsg->content);
+        }
+
+
+
         if(!CheckSign(pMsg->srcnode,NULL)){
                  OspLog(LOG_LVL_ERROR,"[FileStableRemove]not signed,sign in first\n");
                  wClientAck = 3;
                  goto postError2gui;
         }
 
-        if(!CheckFileIn((LPCSTR)pMsg->content,&tnFile)){
+        if(!CheckFileIn((LPCSTR)wFileName,&tnFile)){
                  OspLog(LOG_LVL_ERROR,"[FileStableRemove]file is not in the list\n");
                  wClientAck = 4;
                  goto postError2gui;
@@ -1093,7 +1139,7 @@ void CSInstance::FileStableRemove(CMessage* const pMsg){
 
         tDemoInfo.srcid = pMsg->srcid;
         tDemoInfo.srcnode = pMsg->srcnode;
-        strcpy((LPSTR)tDemoInfo.fileName,(LPCSTR)pMsg->content);
+        strcpy((LPSTR)tDemoInfo.fileName,(LPCSTR)wFileName);
 
         ins->m_curState = RUNNING_STATE;
         ins->m_bSignInFlag = true;
