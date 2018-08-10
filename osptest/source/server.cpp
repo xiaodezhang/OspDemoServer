@@ -806,6 +806,7 @@ void CSInstance::ReceiveRemove(CMessage* const pMsg){
         emFileStatus = STATUS_RECEIVE_REMOVE;
         OspLog(SYS_LOG_LEVEL,"[ReceiveRemove]receive remove msg\n");
 
+        return;
 postError2client:
        
        tRemoveAck.wClientAck = wClientAck;
