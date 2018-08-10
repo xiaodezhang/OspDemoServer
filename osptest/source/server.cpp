@@ -619,6 +619,9 @@ void CSInstance::FileFinish(CMessage* const pMsg){
 void CSInstance::ReceiveCancel(CMessage* const pMsg){
 
         TFileList *tFile;
+        u8 wFileName[MAX_FILE_NAME_LENGTH];
+        LPSTR p;
+
 
         wClientAck = 0;
 
@@ -627,8 +630,22 @@ void CSInstance::ReceiveCancel(CMessage* const pMsg){
                 wClientAck = 1;
                 goto postError2client;
         }
-        strcpy((LPSTR)file_name_path,(LPCSTR)pMsg->content);
-        if(!CheckFileIn((LPCSTR)pMsg->content,&tFile)){
+        //absolute path deal
+        if((p = strrchr((LPSTR)pMsg->content,'/'))){
+                strcpy((LPSTR)wFileName,p+1);
+        }else{
+                strcpy((LPSTR)wFileName,(LPCSTR)pMsg->content);
+        }
+
+        if((p = strrchr((LPSTR)pMsg->content,'\\'))){
+                strcpy((LPSTR)wFileName,p+1);
+        }else{
+                strcpy((LPSTR)wFileName,(LPCSTR)pMsg->content);
+        }
+
+
+        strcpy((LPSTR)file_name_path,(LPCSTR)wFileName);
+        if(!CheckFileIn((LPCSTR)file_name_path,&tFile)){
                 OspLog(LOG_LVL_ERROR,"[ReceiveCancel]file not in list\n");
                 wClientAck = 2;
                 goto postError2client;
@@ -726,6 +743,9 @@ post2client:
 void CSInstance::ReceiveRemove(CMessage* const pMsg){
 
         TFileList *tFile;
+        u8 wFileName[MAX_FILE_NAME_LENGTH];
+        LPSTR p;
+
 
         wClientAck = 0;
         if(!pMsg->content || pMsg->length <= 0){
@@ -734,7 +754,20 @@ void CSInstance::ReceiveRemove(CMessage* const pMsg){
                 goto postError2client;
         }
 
-        strcpy((LPSTR)file_name_path,(LPCSTR)pMsg->content);
+        //absolute path deal
+        if((p = strrchr((LPSTR)pMsg->content,'/'))){
+                strcpy((LPSTR)wFileName,p+1);
+        }else{
+                strcpy((LPSTR)wFileName,(LPCSTR)pMsg->content);
+        }
+
+        if((p = strrchr((LPSTR)pMsg->content,'\\'))){
+                strcpy((LPSTR)wFileName,p+1);
+        }else{
+                strcpy((LPSTR)wFileName,(LPCSTR)pMsg->content);
+        }
+
+        strcpy((LPSTR)file_name_path,(LPCSTR)wFileName);
         if(!CheckFileIn((LPCSTR)file_name_path,&tFile)){
                 OspLog(LOG_LVL_ERROR,"[ReceiveRemove]file not in list\n");
                 wClientAck = 2;
