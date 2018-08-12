@@ -7,8 +7,10 @@
 #define MAX_PASSWD_LENGTH              100
 #define TEST_USER_NUM           5
 
-#define USE_CONNECT_FLAG  0
+
 #define SYS_LOG_LEVEL_REPEAT             0
+
+#define FILEPATH                     "~/data"
 
 CSApp g_cCSApp;
 
@@ -17,10 +19,33 @@ s8 buffer[BUFFER_SIZE];
 struct list_head tClientList; //客户端表，一个node一个客户端
 struct list_head tFileList;   //文件表
 struct list_head tUserList;   //用户表
+struct list_head tStableFileList;   //硬盘文件表
+
+typedef struct tagStableFileList{
+        struct list_head       tListHead;
+        char                   sha1[41];
+}TStableFileList;
+
+
+typedef struct tagFile-NamesList{
+        struct list_head       tListHead;
+        char                   sha1[41];
+        u8                     *FileName[MAX_FILE_NAME_LENGTH];
+        u32                    FileNameNum;           
+}TFile-NamesList;
+
+typedef struct tagUserList{
+        struct list_head       tListHead;
+        u8                     chUserName[MAX_USER_NAME_LENGTH+1];
+        u8                     chPasswd[MAX_PASSWD_LENGTH+1];
+        struct list_head       tFile-NamesList;
+        u16                    level;   //定义用户权限
+}TUserList;
 
 typedef struct tagFileList{
         struct list_head       tListHead;
         u8                     FileName[MAX_FILE_NAME_LENGTH];
+        char                   sha1[41];
         EM_FILE_STATUS         FileStatus;
         u16                    DealInstance;
         u32                    wClientId;     //从属客户端
@@ -33,12 +58,6 @@ typedef struct tagClientList{
         u8                     chUserName[MAX_USER_NAME_LENGTH+1];
 }TClientList;
 
-typedef struct tagUserList{
-        struct list_head       tListHead;
-        u8                     chUserName[MAX_USER_NAME_LENGTH+1];
-        u8                     chPasswd[MAX_PASSWD_LENGTH+1];
-        u16                    level;   //定义用户权限
-}TUserList;
 
 typedef struct tagDemoInfo{
         u32                    srcid;
@@ -52,6 +71,16 @@ typedef struct tagUploadAck{
         s16            wClientAck;
 }TUploadAck;
 
+typedef struct tagSha1Ack{
+        u8             FileName[MAX_FILE_NAME_LENGTH];
+        bool           exist;
+}TSha1Ack;
+
+typedef struct tagSha1Send{
+        u8             FileName[MAX_FILE_NAME_LENGTH];
+        char           Sha1[41];
+}TSha1Send;
+
 typedef struct tagRemoveAck{
         bool           stableFlag;
         s16            wClientAck;
@@ -59,6 +88,7 @@ typedef struct tagRemoveAck{
 
 static bool CheckSign(u32 wClientId,TClientList **tClient);
 static bool CheckFileIn(LPCSTR filename,TFileList **tFile);
+static bool CheckSha1(char sha1,TFileList **tFile);
 static CSInstance* GetPendingIns();
 
 static s16 wClientAck;
@@ -316,6 +346,26 @@ bool CSInstance::FindProcess(u32 EventState,MsgProcess* c_MsgProcess,tCmdNode* t
 void CSInstance::FileSha1Receive(CMessage* const pMsg){ 
 
         char sha1Buffer[41];
+        TSha1Send* tSha1Send;
+        TSha1Ack tSha1Ack;
+
+        if(!pMsg->content || pMsg->length <= 0){
+                OspLog(LOG_LVL_ERROR,"[FileSha1Receive]sha1 content error\n");
+                return;
+        }
+        tSha1Send = (TSha1Send*)pMsg->content;
+        strcpy(tSha1Ack->FileName,tSha1Send->FileName);
+        if(!CheckSha1(tSha1Send->Sha1,NULL)){
+                tSha1Ack->exist = false;
+        }else{
+                tSha1Ack->exist = true;
+        }
+        if(OSP_OK != post(pMsg->srcid,FILE_SHA1_ACK
+                                ,&tSha1Ack,sizeof(tSha1Ack),srcnode)){
+                OspPrintf(1,0,"[DamonFileReceiveUpload]post to pending instance failed\n");
+                return;
+        }
+
 }
 
 void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){ 
@@ -1250,7 +1300,6 @@ void CSInstance::DealDisconnect(CMessage* const pMsg){
         list_for_each_safe(tFileHead,templist,&tFileList){
                 tnFile = list_entry(tFileHead,TFileList,tListHead);
                 if(tnFile->wClientId == dwsrcnode){
-                       OspLog(SYS_LOG_LEVEL,"[DealDisconnect]del from file list:%s\n",tnFile->FileName);
                        pIns = (CSInstance*)((CApp*)&g_cCSApp)->GetInstance(tnFile->DealInstance);
                        if(!pIns){
                                OspLog(LOG_LVL_ERROR,"[DealDisconnect]get ins error\n");
@@ -1328,6 +1377,29 @@ static bool CheckSign(u32 wClientId,TClientList **tClient){
                 }
         }
         return inClientList;
+}
+
+static bool CheckSha1(char sha1,TFileList **tFile){
+
+        struct list_head *tFileHead;
+        TFileList *tnFile = NULL;
+        bool inFileList = false;
+
+        list_for_each(tFileHead,&tFileList){
+                tnFile = list_entry(tFileHead,TFileList,tListHead);
+                if(0 == strcmp((LPCSTR)tnFile->sha1,sha1)){
+                        inFileList = true;
+                        break;
+                }
+        }
+        if(tFile){
+                if(inFileList){
+                    *tFile = tnFile;
+                }else{
+                    *tFile = NULL;
+                }
+        }
+        return inFileList;
 }
 
 static bool CheckFileIn(LPCSTR filename,TFileList **tFile){

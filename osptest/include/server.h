@@ -55,6 +55,7 @@
 #define FILE_STABLE_REMOVE_DEAL           (EV_CLIENT_TEST_BGN+43)
 
 #define FILE_SHA1                         (EV_CLIENT_TEST_BGN+44)
+#define FILE_SHA1_ACK                     (EV_CLIENT_TEST_BGN+45)
 
 
 
