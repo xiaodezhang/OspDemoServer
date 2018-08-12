@@ -349,11 +349,7 @@ void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){
         //absolute path deal
         if((p = strrchr((LPSTR)pMsg->content,'/'))){
                 strcpy((LPSTR)wFileName,p+1);
-        }else{
-                strcpy((LPSTR)wFileName,(LPCSTR)pMsg->content);
-        }
-
-        if((p = strrchr((LPSTR)pMsg->content,'\\'))){
+        }else if((p = strrchr((LPSTR)pMsg->content,'\\'))){
                 strcpy((LPSTR)wFileName,p+1);
         }else{
                 strcpy((LPSTR)wFileName,(LPCSTR)pMsg->content);
@@ -418,6 +414,7 @@ void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){
         //加入文件表
        if(!tnFile){
                tnFile = new TFileList();
+                OspLog(LOG_LVL_ERROR,"[DaemonFileReceiveUpload]tnFile:%d\n",tnFile);
                if(!tnFile){
                     OspLog(LOG_LVL_ERROR,"[DaemonFileReceiveUpload]file list malloc error\n");
                     wClientAck = 9;
@@ -425,8 +422,12 @@ void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){
                     ins->m_bSignInFlag = false;
                     goto postError2client;
                }
-               list_add(&tnFile->tListHead,&tFileList);
+               list_add(&(tnFile->tListHead),&tFileList);
+
+                OspLog(LOG_LVL_ERROR,"[DaemonFileReceiveUpload]tnFile:%d\n",tnFile);
        }
+
+                OspLog(LOG_LVL_ERROR,"[DaemonFileReceiveUpload]tnFile:%d\n",tnFile);
        strcpy((LPSTR)tnFile->FileName,(LPCSTR)wFileName);
        tnFile->FileStatus = STATUS_RECEIVE_UPLOAD;
        tnFile->DealInstance = ins->GetInsID();
@@ -633,20 +634,15 @@ void CSInstance::ReceiveCancel(CMessage* const pMsg){
         //absolute path deal
         if((p = strrchr((LPSTR)pMsg->content,'/'))){
                 strcpy((LPSTR)wFileName,p+1);
-        }else{
-                strcpy((LPSTR)wFileName,(LPCSTR)pMsg->content);
-        }
-
-        if((p = strrchr((LPSTR)pMsg->content,'\\'))){
+        }else if((p = strrchr((LPSTR)pMsg->content,'\\'))){
                 strcpy((LPSTR)wFileName,p+1);
         }else{
                 strcpy((LPSTR)wFileName,(LPCSTR)pMsg->content);
         }
 
-
         strcpy((LPSTR)file_name_path,(LPCSTR)wFileName);
         if(!CheckFileIn((LPCSTR)file_name_path,&tFile)){
-                OspLog(LOG_LVL_ERROR,"[ReceiveCancel]file not in list\n");
+                OspLog(LOG_LVL_ERROR,"[ReceiveCancel]file:%s not in list\n",file_name_path);
                 wClientAck = 2;
                 goto postError2client;
         }
@@ -717,6 +713,7 @@ void CSInstance::FileCancel(CMessage* const pMsg){
 #endif
                 OspLog(LOG_LVL_ERROR,"[FileCancel]file close failed\n");
                 wClientAck = 7;
+                file = INVALID_FILEHANDLE;
                 goto post2client;
                 //get the errno
         }
@@ -757,11 +754,7 @@ void CSInstance::ReceiveRemove(CMessage* const pMsg){
         //absolute path deal
         if((p = strrchr((LPSTR)pMsg->content,'/'))){
                 strcpy((LPSTR)wFileName,p+1);
-        }else{
-                strcpy((LPSTR)wFileName,(LPCSTR)pMsg->content);
-        }
-
-        if((p = strrchr((LPSTR)pMsg->content,'\\'))){
+        }else if((p = strrchr((LPSTR)pMsg->content,'\\'))){
                 strcpy((LPSTR)wFileName,p+1);
         }else{
                 strcpy((LPSTR)wFileName,(LPCSTR)pMsg->content);
@@ -769,7 +762,7 @@ void CSInstance::ReceiveRemove(CMessage* const pMsg){
 
         strcpy((LPSTR)file_name_path,(LPCSTR)wFileName);
         if(!CheckFileIn((LPCSTR)file_name_path,&tFile)){
-                OspLog(LOG_LVL_ERROR,"[ReceiveRemove]file not in list\n");
+                OspLog(LOG_LVL_ERROR,"[ReceiveRemove]file:%s not in list\n",file_name_path);
                 wClientAck = 2;
                 goto postError2client;
         }
@@ -842,11 +835,7 @@ void CSInstance::FileGoOn(CMessage* const pMsg){
         //absolute path deal
         if((p = strrchr((LPSTR)pMsg->content,'/'))){
                 strcpy((LPSTR)wFileName,p+1);
-        }else{
-                strcpy((LPSTR)wFileName,(LPCSTR)pMsg->content);
-        }
-
-        if((p = strrchr((LPSTR)pMsg->content,'\\'))){
+        }else if((p = strrchr((LPCSTR)pMsg->content,'\\'))){
                 strcpy((LPSTR)wFileName,p+1);
         }else{
                 strcpy((LPSTR)wFileName,(LPCSTR)pMsg->content);
@@ -920,6 +909,7 @@ void CSInstance::FileGoOn(CMessage* const pMsg){
         }
         tnFile->FileStatus = STATUS_RECEIVE_GO_ON;
         tnFile->DealInstance = ins->GetInsID();
+        tnFile->wClientId = pMsg->srcnode;
         OspLog(SYS_LOG_LEVEL,"[FileGoOn]receive go on\n");
 
         return;
@@ -1100,16 +1090,11 @@ void CSInstance::FileStableRemove(CMessage* const pMsg){
         //absolute path deal
         if((p = strrchr((LPSTR)pMsg->content,'/'))){
                 strcpy((LPSTR)wFileName,p+1);
-        }else{
-                strcpy((LPSTR)wFileName,(LPCSTR)pMsg->content);
-        }
-
-        if((p = strrchr((LPSTR)pMsg->content,'\\'))){
+        }else if((p = strrchr((LPCSTR)pMsg->content,'\\'))){
                 strcpy((LPSTR)wFileName,p+1);
         }else{
                 strcpy((LPSTR)wFileName,(LPCSTR)pMsg->content);
         }
-
 
 
         if(!CheckSign(pMsg->srcnode,NULL)){
@@ -1310,11 +1295,6 @@ void CSInstance::DealDisconnect(CMessage* const pMsg){
 #endif
 
         //TODO：断点续传
-        //去除断链注册
-        if(OSP_OK != OspNodeDelDiscCB(dwsrcnode,SERVER_APP_ID,CInstance::DAEMON)){
-               OspLog(LOG_LVL_ERROR,"[DealDisconnect]del discb failed\n");
-               return;
-        }
 
         //需要配合文件的关闭回收
         //m_wServerPort = SERVER_PORT;
@@ -1335,7 +1315,11 @@ static bool CheckSign(u32 wClientId,TClientList **tClient){
                 }
         }
         if(tClient){
-                *tClient = tnClient;
+                if(inClientList){
+                    *tClient = tnClient;
+                }else{
+                    *tClient = NULL;
+                }
         }
         return inClientList;
 }
@@ -1354,7 +1338,11 @@ static bool CheckFileIn(LPCSTR filename,TFileList **tFile){
                 }
         }
         if(tFile){
-                *tFile = tnFile;
+                if(inFileList){
+                    *tFile = tnFile;
+                }else{
+                    *tFile = NULL;
+                }
         }
         return inFileList;
 }
