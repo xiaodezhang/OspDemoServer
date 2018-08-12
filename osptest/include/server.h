@@ -54,6 +54,8 @@
 
 #define FILE_STABLE_REMOVE_DEAL           (EV_CLIENT_TEST_BGN+43)
 
+#define FILE_SHA1                         (EV_CLIENT_TEST_BGN+44)
+
 
 
 const u8 SERVER_APP_PRI                  = 80;
@@ -143,6 +145,7 @@ public:
 
         void notifyConnected(CMessage* const);
         void DaemonFileReceiveUpload(CMessage*const);
+        void FileSha1Receive(CMessage*const);
 #if 0
         void FileGoOnDeal(CMessage*const);
 #endif

@@ -206,6 +206,7 @@ void CSInstance::MsgProcessInit(){
         RegMsgProFun(MAKEESTATE(IDLE_STATE,SIGN_IN),&CSInstance::SignIn,&m_tCmdDaemonChain);
         RegMsgProFun(MAKEESTATE(IDLE_STATE,SIGN_OUT),&CSInstance::SignOut,&m_tCmdDaemonChain);
         RegMsgProFun(MAKEESTATE(IDLE_STATE,OSP_DISCONNECT),&CSInstance::DealDisconnect,&m_tCmdDaemonChain);
+        RegMsgProFun(MAKEESTATE(IDLE_STATE,FILE_SHA1),&CSInstance::FileSha1Receive,&m_tCmdDaemonChain);
         RegMsgProFun(MAKEESTATE(IDLE_STATE,FILE_RECEIVE_UPLOAD),&CSInstance::DaemonFileReceiveUpload
                         ,&m_tCmdDaemonChain);
         RegMsgProFun(MAKEESTATE(IDLE_STATE,FILE_GO_ON),&CSInstance::FileGoOn,&m_tCmdDaemonChain);
@@ -310,6 +311,11 @@ bool CSInstance::FindProcess(u32 EventState,MsgProcess* c_MsgProcess,tCmdNode* t
         }
 
         return false;
+}
+
+void CSInstance::FileSha1Receive(CMessage* const pMsg){ 
+
+        char sha1Buffer[41];
 }
 
 void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){ 
