@@ -23,24 +23,48 @@ struct list_head tStableFileList;   //硬盘文件表
 
 typedef struct tagStableFileList{
         struct list_head       tListHead;
-        char                   sha1[41];
+        char                   sha1[41];          //key
+        u8                     *FileName[MAX_FILE_NAME_LENGTH];
+        u32                    FileNameNum;           
 }TStableFileList;
 
 
-typedef struct tagFile-NamesList{
+#if 0
+typedef struct tagFile_NamesList{
         struct list_head       tListHead;
         char                   sha1[41];
         u8                     *FileName[MAX_FILE_NAME_LENGTH];
         u32                    FileNameNum;           
-}TFile-NamesList;
+}TFile_NamesList;
+#endif
 
 typedef struct tagUserList{
         struct list_head       tListHead;
-        u8                     chUserName[MAX_USER_NAME_LENGTH+1];
-        u8                     chPasswd[MAX_PASSWD_LENGTH+1];
-        struct list_head       tFile-NamesList;
+        u32                    dwUserID;
+        u8                     chUserName[MAX_USER_NAME_LENGTH]; //key
+        u8                     chPasswd[MAX_PASSWD_LENGTH];
+#if 0
+        struct list_head       tFile_NamesList;
+#endif
         u16                    level;   //定义用户权限
 }TUserList;
+
+
+typedef struct tagUser_File{
+        struct list_head       tListHead;
+        u32                    dwUserFileID;
+        u32                    dwUserID;
+        char                   sha1[41];
+}TUser_File;
+
+
+//已登录客户端表
+typedef struct tagClientList{
+        struct list_head       tListHead;
+        u32                    wClientId;     //客户端node作为id,key
+        u8                     chUserName[MAX_USER_NAME_LENGTH]; //foreign key
+}TClientList;
+
 
 typedef struct tagFileList{
         struct list_head       tListHead;
@@ -51,12 +75,6 @@ typedef struct tagFileList{
         u32                    wClientId;     //从属客户端
 }TFileList;
 
-//已登录客户端表
-typedef struct tagClientList{
-        struct list_head       tListHead;
-        u32                    wClientId;     //客户端node作为id
-        u8                     chUserName[MAX_USER_NAME_LENGTH+1];
-}TClientList;
 
 
 typedef struct tagDemoInfo{
@@ -88,7 +106,7 @@ typedef struct tagRemoveAck{
 
 static bool CheckSign(u32 wClientId,TClientList **tClient);
 static bool CheckFileIn(LPCSTR filename,TFileList **tFile);
-static bool CheckSha1(char sha1,TFileList **tFile);
+static bool CheckSha1(char* sha1,TFileList **tFile);
 static CSInstance* GetPendingIns();
 
 static s16 wClientAck;
@@ -354,14 +372,14 @@ void CSInstance::FileSha1Receive(CMessage* const pMsg){
                 return;
         }
         tSha1Send = (TSha1Send*)pMsg->content;
-        strcpy(tSha1Ack->FileName,tSha1Send->FileName);
+        strcpy((LPSTR)tSha1Ack.FileName,(LPCSTR)tSha1Send->FileName);
         if(!CheckSha1(tSha1Send->Sha1,NULL)){
-                tSha1Ack->exist = false;
+                tSha1Ack.exist = false;
         }else{
-                tSha1Ack->exist = true;
+                tSha1Ack.exist = true;
         }
         if(OSP_OK != post(pMsg->srcid,FILE_SHA1_ACK
-                                ,&tSha1Ack,sizeof(tSha1Ack),srcnode)){
+                                ,&tSha1Ack,sizeof(tSha1Ack),pMsg->srcnode)){
                 OspPrintf(1,0,"[DamonFileReceiveUpload]post to pending instance failed\n");
                 return;
         }
@@ -1379,7 +1397,7 @@ static bool CheckSign(u32 wClientId,TClientList **tClient){
         return inClientList;
 }
 
-static bool CheckSha1(char sha1,TFileList **tFile){
+static bool CheckSha1(char* sha1,TFileList **tFile){
 
         struct list_head *tFileHead;
         TFileList *tnFile = NULL;
