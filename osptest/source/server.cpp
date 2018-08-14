@@ -403,8 +403,6 @@ void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){
        if(OSP_OK != post(MAKEIID(SERVER_APP_ID,ins->GetInsID()),FILE_RECEIVE_UPLOAD_DEAL
                                ,&tDemoInfo,sizeof(TDemoInfo))){
                OspPrintf(1,0,"[DamonFileReceiveUpload]post to pending instance failed\n");
-               printf("[DamonFileReceiveUpload]post to pending instance failed\n");
-               //TODO：通知客户端
                wClientAck = 8;
                ins->m_curState = IDLE_STATE;
                ins->m_bSignInFlag = false;
@@ -414,7 +412,6 @@ void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){
         //加入文件表
        if(!tnFile){
                tnFile = new TFileList();
-                OspLog(LOG_LVL_ERROR,"[DaemonFileReceiveUpload]tnFile:%d\n",tnFile);
                if(!tnFile){
                     OspLog(LOG_LVL_ERROR,"[DaemonFileReceiveUpload]file list malloc error\n");
                     wClientAck = 9;
@@ -423,16 +420,12 @@ void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){
                     goto postError2client;
                }
                list_add(&(tnFile->tListHead),&tFileList);
-
-                OspLog(LOG_LVL_ERROR,"[DaemonFileReceiveUpload]tnFile:%d\n",tnFile);
        }
-
-                OspLog(LOG_LVL_ERROR,"[DaemonFileReceiveUpload]tnFile:%d\n",tnFile);
        strcpy((LPSTR)tnFile->FileName,(LPCSTR)wFileName);
        tnFile->FileStatus = STATUS_RECEIVE_UPLOAD;
        tnFile->DealInstance = ins->GetInsID();
        tnFile->wClientId = pMsg->srcnode;
-       OspLog(SYS_LOG_LEVEL,"[DaemonFileRecevieUpload]daemon receive upload\n");
+       OspLog(SYS_LOG_LEVEL,"[DaemonFileRecevieUpload]daemon receive upload,clientid:%d\n",tnFile->wClientId);
 
        return;
 
@@ -471,6 +464,7 @@ void CSInstance::FileReceiveUpload(CMessage* const pMsg){
                 wClientAck = 10;
                 goto post2client;
         }
+
         fl.l_type = F_WRLCK;
         fl.l_whence = SEEK_SET;
         fl.l_start = 0;
@@ -1244,7 +1238,6 @@ void CSInstance::DealDisconnect(CMessage* const pMsg){
         list_for_each_safe(tFileHead,templist,&tFileList){
                 tnFile = list_entry(tFileHead,TFileList,tListHead);
                 if(tnFile->wClientId == dwsrcnode){
-                       OspLog(SYS_LOG_LEVEL,"[DealDisconnect]del from file list:%s\n",tnFile->FileName);
                        pIns = (CSInstance*)((CApp*)&g_cCSApp)->GetInstance(tnFile->DealInstance);
                        if(!pIns){
                                OspLog(LOG_LVL_ERROR,"[DealDisconnect]get ins error\n");
@@ -1252,14 +1245,14 @@ void CSInstance::DealDisconnect(CMessage* const pMsg){
                        }
                        if(pIns->file != INVALID_FILEHANDLE){
 #if _LINUX_
-                               if(INVALID_FILEHANDLE == close(file)){
+                               if(INVALID_FILEHANDLE == close(pIns->file)){
 #elif defined _MSC_VER
-                               if(INVALID_FILEHANDLE == fclose(file)){
+                               if(INVALID_FILEHANDLE == fclose(pIns->file)){
 #endif
-                                        OspLog(LOG_LVL_ERROR,"[DealDisconnect]file close failed\n");
-                                        perror("[DealDisconnect]:");
+                                        OspLog(LOG_LVL_ERROR,"[DealDisconnect]file:%d close failed:%s,clientid:%d\n"
+                                                        ,pIns->file,strerror(errno),tnFile->wClientId);
                                }
-                               file = INVALID_FILEHANDLE;
+                               pIns->file = INVALID_FILEHANDLE;
                        }
 
                        if(!pIns){
@@ -1407,7 +1400,6 @@ void CSInstance::SignIn(CMessage *const pMsg){
                        if(!CheckSign(pMsg->srcnode,NULL)){
                                //插入客户端表
                                tClient->wClientId = pMsg->srcnode;
-                               printf("srcnode:%d\ndstnode:%d\n",pMsg->srcnode,pMsg->dstnode);
                                list_add(&tClient->tListHead,&tClientList);
                        }
                        inUserList = true;

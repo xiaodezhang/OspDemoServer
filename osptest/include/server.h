@@ -102,7 +102,6 @@ private:
         FILEHANDLE file;
         tCmdNode *m_tCmdChain;
         tCmdNode *m_tCmdDaemonChain;
-        u8       file_name_path[MAX_FILE_NAME_LENGTH];
         bool     m_bConnectedFlag;
 public:
         CSInstance():file(INVALID_FILEHANDLE),emFileStatus(STATUS_INIT)
@@ -123,6 +122,9 @@ public:
         }
 
         bool m_bSignInFlag;
+        u8       file_name_path[MAX_FILE_NAME_LENGTH];
+
+
         void MsgProcessInit();
         void NodeChainEnd();
         bool RegMsgProFun(u32,MsgProcess,tCmdNode**);
