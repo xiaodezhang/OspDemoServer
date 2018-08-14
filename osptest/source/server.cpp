@@ -1325,14 +1325,14 @@ void CSInstance::DealDisconnect(CMessage* const pMsg){
                        }
                        if(pIns->file != INVALID_FILEHANDLE){
 #if _LINUX_
-                               if(INVALID_FILEHANDLE == close(file)){
+                               if(INVALID_FILEHANDLE == close(pIns->file)){
 #elif defined _MSC_VER
-                               if(INVALID_FILEHANDLE == fclose(file)){
+                               if(INVALID_FILEHANDLE == fclose(pIns->file)){
 #endif
                                         OspLog(LOG_LVL_ERROR,"[DealDisconnect]file close failed\n");
                                         perror("[DealDisconnect]:");
                                }
-                               file = INVALID_FILEHANDLE;
+                               pIns->file = INVALID_FILEHANDLE;
                        }
 
                        if(!pIns){
