@@ -368,10 +368,12 @@ void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){
                         //TODO:同一用户操作
                         if(tnFile->wClientId != pMsg->srcnode){
                                //文件被其他客户端占用
-                               OspLog(SYS_LOG_LEVEL,"[DaemonFileReceiveUpload]file being used by"
-                                               "another client\n");
-                               wClientAck = 5;
-                               goto postError2client;
+                               if(tnFile->FileStatus != STATUS_REMOVED){
+                                       OspLog(SYS_LOG_LEVEL,"[DaemonFileReceiveUpload]file being used by"
+                                                       "another client\n");
+                                       wClientAck = 5;
+                                       goto postError2client;
+                               }
                         }
                 }
         }
@@ -425,7 +427,6 @@ void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){
        tnFile->FileStatus = STATUS_RECEIVE_UPLOAD;
        tnFile->DealInstance = ins->GetInsID();
        tnFile->wClientId = pMsg->srcnode;
-       OspLog(SYS_LOG_LEVEL,"[DaemonFileRecevieUpload]daemon receive upload,clientid:%d\n",tnFile->wClientId);
 
        return;
 
@@ -1017,21 +1018,14 @@ void CSInstance::FileRemove(CMessage* const pMsg){
         OspLog(SYS_LOG_LEVEL,"[FileRemove]file closed\n");
         //TODO:需要测试文件是否还存在
         if(unlink((LPCSTR)file_name_path) == 0){
-                OspLog(SYS_LOG_LEVEL,"[FileRemove]file removed\n");
-                if(OSP_OK != post(pMsg->srcid,FILE_REMOVE_ACK
-                                    ,&tRemoveAck,sizeof(tRemoveAck),pMsg->srcnode)){
-                        OspPrintf(1,0,"[FileRemove]post back failed\n");
-                        printf("[FileRemove]post back failed\n");
-                        return;
-                }
+               tRemoveAck.wClientAck = 0;
         }else{
                OspLog(LOG_LVL_ERROR,"[FileRemove]file remove failed\n");
                tRemoveAck.wClientAck = 11;
-               if(OSP_OK != post(pMsg->srcid,FILE_REMOVE_ACK
+        }
+        if(OSP_OK != post(pMsg->srcid,FILE_REMOVE_ACK
                                        ,&tRemoveAck,sizeof(tRemoveAck),pMsg->srcnode)){
-                       OspLog(SYS_LOG_LEVEL,"[FileStableRemoveDeal]post back,clientack:%d\n",tRemoveAck.wClientAck);
-               }
-               return;
+                       OspLog(SYS_LOG_LEVEL,"[FileRemove]post back,clientack:%d\n",tRemoveAck.wClientAck);
         }
 
 #elif defined _MSC_VER_
@@ -1041,17 +1035,15 @@ void CSInstance::FileRemove(CMessage* const pMsg){
         file = INVALID_FILEHANDLE;
         OspLog(SYS_LOG_LEVEL,"[FileRemove]file closed\n");
         if(remove((LPCSTR)file_name_path) == -1){
+               tRemoveAck.wClientAck = 11;
                OspLog(LOG_LVL_ERROR,"[FileRemove]file remove failed\n");
         }else{
-               OspLog(SYS_LOG_LEVEL,"[FileRemove]file removed\n");
-               tRemoveAck.wClientAck = 11;
-               if(OSP_OK != post(pMsg->srcid,FILE_REMOVE_ACK
-                                       ,&tRemoveAck,sizeof(tRemoveAck),pMsg->srcnode)){
-                       OspLog(SYS_LOG_LEVEL,"[FileStableRemoveDeal]post back,clientack:%d\n",tRemoveAck.wClientAck);
-               }
-               return;
+               tRemoveAck.wClientAck = 0;
         }
-
+        if(OSP_OK != post(pMsg->srcid,FILE_REMOVE_ACK
+                                ,&tRemoveAck,sizeof(tRemoveAck),pMsg->srcnode)){
+                OspLog(SYS_LOG_LEVEL,"[FileStableRemoveDeal]post back,clientack:%d\n",tRemoveAck.wClientAck);
+        }
 #endif
         emFileStatus = STATUS_REMOVED;
         tFile->FileStatus = STATUS_REMOVED;
@@ -1104,15 +1096,17 @@ void CSInstance::FileStableRemove(CMessage* const pMsg){
         }
 
         if(tnFile->wClientId != pMsg->srcnode){
-                 OspLog(LOG_LVL_ERROR,"[FileStableRemove]file being used by another client\n");
-                 wClientAck = 5;
-                 goto postError2gui;
+                if(tnFile->FileStatus != STATUS_REMOVED){
+                        OspLog(LOG_LVL_ERROR,"[FileStableRemove]file being used by another client\n");
+                        wClientAck = 5;
+                        goto postError2gui;
+                }
         }
 
         if(tnFile->FileStatus == STATUS_RECEIVE_REMOVE){
-                 OspLog(SYS_LOG_LEVEL,"[FileStableRemove]wait for going on\n");
-                 wClientAck = 6;
-                 goto postError2gui;
+                OspLog(SYS_LOG_LEVEL,"[FileStableRemove]wait for going on\n");
+                wClientAck = 6;
+                goto postError2gui;
         }
 
 #if 0
