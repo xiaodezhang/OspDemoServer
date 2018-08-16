@@ -59,7 +59,7 @@ typedef struct tagUploadAck{
 }TUploadAck;
 
 typedef struct tagRemoveAck{
-        bool           stableFlag;
+        s8             stableFlag;
         s16            wClientAck;
 }TRemoveAck;
 
@@ -593,6 +593,7 @@ post2client:
 void CSInstance::FileFinish(CMessage* const pMsg){
 
      TFileList* tFile;
+     s8 ClientAck_s[8+CACHE_TAIL];
 
      wClientAck = 0;
      if(!pMsg->content && pMsg->length > 0){
@@ -626,8 +627,9 @@ void CSInstance::FileFinish(CMessage* const pMsg){
              OspLog(SYS_LOG_LEVEL,"[FileFinish]file finished\n");
      }
 
-     if(OSP_OK != post(pMsg->srcid,FILE_FINISH_ACK,&wClientAck
-           ,sizeof(wClientAck),pMsg->srcnode)){
+     sprintf(ClientAck_s,"{\"ClientAck\":%d}",wClientAck);
+     if(OSP_OK != post(pMsg->srcid,FILE_FINISH_ACK,ClientAck_s
+           ,strlen(ClientAck_s)+1,pMsg->srcnode)){
              OspPrintf(1,0,"post back failed\n");
              return;
      }
@@ -639,6 +641,7 @@ void CSInstance::ReceiveCancel(CMessage* const pMsg){
         TFileList *tFile;
         u8 wFileName[MAX_FILE_NAME_LENGTH];
         LPSTR p;
+        s8 ClientAck_s[8+CACHE_TAIL];
 
 
         wClientAck = 0;
@@ -697,8 +700,9 @@ void CSInstance::ReceiveCancel(CMessage* const pMsg){
 
 postError2client:
 
+        sprintf(ClientAck_s,"{\"ClientAck\":%d}",wClientAck);
         if(OSP_OK != post(pMsg->srcid,FILE_CANCEL_ACK
-                            ,&wClientAck,sizeof(wClientAck),pMsg->srcnode)){
+                            ,ClientAck_s,strlen(ClientAck_s)+1,pMsg->srcnode)){
                 OspPrintf(1,0,"[ReceiveCancel]post back failed\n");
                 printf("[ReceiveCancel]post back failed\n");
                 //TODO:状态回收
@@ -709,6 +713,7 @@ postError2client:
 void CSInstance::FileCancel(CMessage* const pMsg){
 
         TFileList* tFile;
+        s8 ClientAck_s[8+CACHE_TAIL];
 
         wClientAck = 0;
 
@@ -748,8 +753,10 @@ void CSInstance::FileCancel(CMessage* const pMsg){
         OspLog(SYS_LOG_LEVEL,"[FileCancel]file cancelled\n");
 
 post2client:
+
+        sprintf(ClientAck_s,"{\"ClientAck\":%d}",wClientAck);
         if(OSP_OK != post(pMsg->srcid,FILE_CANCEL_ACK
-                            ,&wClientAck,sizeof(wClientAck),pMsg->srcnode)){
+                            ,ClientAck_s,strlen(ClientAck_s)+1,pMsg->srcnode)){
                 OspPrintf(1,0,"[FileCancel]post back failed\n");
                 return;
         }
@@ -761,7 +768,7 @@ void CSInstance::ReceiveRemove(CMessage* const pMsg){
         TFileList *tFile;
         u8 wFileName[MAX_FILE_NAME_LENGTH];
         LPSTR p;
-
+        s8 ClientRemoveAck[200+CACHE_TAIL];
 
         wClientAck = 0;
         if(!pMsg->content || pMsg->length <= 0){
@@ -821,8 +828,8 @@ void CSInstance::ReceiveRemove(CMessage* const pMsg){
         return;
 postError2client:
        
-       tRemoveAck.wClientAck = wClientAck;
-       if(OSP_OK != post(pMsg->srcid,FILE_REMOVE_ACK,&wClientAck,sizeof(wClientAck),pMsg->srcnode)){
+       sprintf(ClientRemoveAck,"{\"ClientAck\":%d,\"stableFlag\":0}",wClientAck);
+       if(OSP_OK != post(pMsg->srcid,FILE_REMOVE_ACK,ClientRemoveAck,strlen(ClientRemoveAck)+1,pMsg->srcnode)){
                OspLog(SYS_LOG_LEVEL,"[FileStaableRemove]post back:%d\n",wClientAck);
        }
        return;
@@ -1030,10 +1037,10 @@ void CSInstance::FileGoOnDeal(CMessage* const pMsg){
 void CSInstance::FileRemove(CMessage* const pMsg){
 
         TFileList* tFile;
+        s8 ClientRemoveAck[200+CACHE_TAIL];
 
         wClientAck = 0;
         CheckFileIn((LPCSTR)file_name_path,&tFile);
-        tRemoveAck.stableFlag = true;
         NextState(IDLE_STATE);
 #ifdef _LINUX_
         if(INVALID_FILEHANDLE == close(file)){//record locks removed
@@ -1044,14 +1051,15 @@ void CSInstance::FileRemove(CMessage* const pMsg){
         OspLog(SYS_LOG_LEVEL,"[FileRemove]file closed\n");
         //TODO:需要测试文件是否还存在
         if(unlink((LPCSTR)file_name_path) == 0){
-               tRemoveAck.wClientAck = 0;
+               wClientAck = 0;
         }else{
                OspLog(LOG_LVL_ERROR,"[FileRemove]file remove failed\n");
-               tRemoveAck.wClientAck = 11;
+               wClientAck = 11;
         }
+        sprintf(ClientRemoveAck,"{\"ClientAck\":%d,\"stableFlag\":0}",wClientAck);
         if(OSP_OK != post(pMsg->srcid,FILE_REMOVE_ACK
-                                       ,&tRemoveAck,sizeof(tRemoveAck),pMsg->srcnode)){
-                       OspLog(SYS_LOG_LEVEL,"[FileRemove]post back,clientack:%d\n",tRemoveAck.wClientAck);
+                                       ,ClientRemoveAck,strlen(ClientRemoveAck)+1,pMsg->srcnode)){
+                       OspLog(SYS_LOG_LEVEL,"[FileRemove]post back,clientack:%d\n",wClientAck);
         }
 
 #elif defined _MSC_VER_
@@ -1061,14 +1069,14 @@ void CSInstance::FileRemove(CMessage* const pMsg){
         file = INVALID_FILEHANDLE;
         OspLog(SYS_LOG_LEVEL,"[FileRemove]file closed\n");
         if(remove((LPCSTR)file_name_path) == -1){
-               tRemoveAck.wClientAck = 11;
+               wClientAck = 11;
                OspLog(LOG_LVL_ERROR,"[FileRemove]file remove failed\n");
         }else{
-               tRemoveAck.wClientAck = 0;
+               wClientAck = 0;
         }
         if(OSP_OK != post(pMsg->srcid,FILE_REMOVE_ACK
                                 ,&tRemoveAck,sizeof(tRemoveAck),pMsg->srcnode)){
-                OspLog(SYS_LOG_LEVEL,"[FileStableRemoveDeal]post back,clientack:%d\n",tRemoveAck.wClientAck);
+                OspLog(SYS_LOG_LEVEL,"[FileStableRemoveDeal]post back,clientack:%d\n",wClientAck);
         }
 #endif
         FileStatus = STATUS_REMOVED;
@@ -1084,6 +1092,7 @@ void CSInstance::FileStableRemove(CMessage* const pMsg){
         TFileList *tnFile;
         u8 wFileName[MAX_FILE_NAME_LENGTH];
         LPCSTR p;
+        s8 ClientRemoveAck[200+CACHE_TAIL];
 
         wClientAck = 0;
         if(!pMsg->content || pMsg->length <= 0){
@@ -1189,8 +1198,8 @@ void CSInstance::FileStableRemove(CMessage* const pMsg){
 
 postError2gui:
 
-       tRemoveAck.wClientAck = wClientAck;
-       if(OSP_OK != post(pMsg->srcid,FILE_REMOVE_ACK,&wClientAck,sizeof(wClientAck),pMsg->srcnode)){
+       sprintf(ClientRemoveAck,"{\"ClientAck\":%d,\"stableFlag\":1}",wClientAck);
+       if(OSP_OK != post(pMsg->srcid,FILE_REMOVE_ACK,ClientRemoveAck,strlen(ClientRemoveAck)+1,pMsg->srcnode)){
                OspLog(SYS_LOG_LEVEL,"[FileStaableRemove]post back:%d\n",wClientAck);
        }
        return;
@@ -1201,6 +1210,7 @@ void CSInstance::FileStableRemoveDeal(CMessage* const pMsg){
 
         TFileList* tFile;
         TDemoInfo *tDemoInfo;
+        s8 ClientRemoveAck[200+CACHE_TAIL];
 
         tDemoInfo = (TDemoInfo*)pMsg->content;
 
@@ -1209,7 +1219,7 @@ void CSInstance::FileStableRemoveDeal(CMessage* const pMsg){
                 return;
         }
 
-        tRemoveAck.stableFlag = true;
+        tRemoveAck.stableFlag = 1;
         strcpy((LPSTR)file_name_path,(LPCSTR)tDemoInfo->fileName);
         CheckFileIn((LPCSTR)tDemoInfo->fileName,&tFile);
         NextState(IDLE_STATE);
@@ -1218,17 +1228,19 @@ void CSInstance::FileStableRemoveDeal(CMessage* const pMsg){
         if(unlink((LPCSTR)file_name_path) == 0){
                 OspLog(SYS_LOG_LEVEL,"[FileStableRemoveDeal]file removed\n");
                 FileStatus = STATUS_REMOVED;
-                tRemoveAck.wClientAck = 0;
+                wClientAck = 0;
+                sprintf(ClientRemoveAck,"{\"ClientAck\":%d,\"stableFlag\":1}",wClientAck);
                 if(OSP_OK != post(tDemoInfo->srcid,FILE_REMOVE_ACK
-                                    ,&tRemoveAck,sizeof(tRemoveAck),tDemoInfo->srcnode)){
+                                    ,ClientRemoveAck,strlen(ClientRemoveAck),tDemoInfo->srcnode)){
                         OspPrintf(1,0,"[FileStableRemoveDeal]post back failed\n");
                         return;
                 }
         }else{
                OspLog(LOG_LVL_ERROR,"[FileStableRemoveDeal]file remove failed\n");
-               tRemoveAck.wClientAck = 11;
+               wClientAck = 11;
+               sprintf(ClientRemoveAck,"{\"ClientAck\":%d,\"stableFlag\":1}",wClientAck);
                if(OSP_OK != post(tDemoInfo->srcid,FILE_REMOVE_ACK
-                                       ,&tRemoveAck,sizeof(tRemoveAck),tDemoInfo->srcnode)){
+                                       ,ClientRemoveAck,strlen(ClientRemoveAck)+1,tDemoInfo->srcnode)){
                        OspLog(SYS_LOG_LEVEL,"[FileStableRemoveDeal]post back,clientack:%d\n",tRemoveAck.wClientAck);
                }
                return;
@@ -1502,7 +1514,7 @@ void CSInstance::SignOut(CMessage* const pMsg){
         TFileList *tnFile;
         CSInstance *pIns;
         wClientAck = 0;
-       s8 ClientAck_s[8+CACHE_TAIL];
+        s8 ClientAck_s[8+CACHE_TAIL];
 
 #if USE_CONNECT_FLAG 
         if(!m_bConnectedFlag){
