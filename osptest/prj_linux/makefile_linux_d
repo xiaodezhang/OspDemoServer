@@ -30,7 +30,7 @@ PWLIB_SUPPORT = 0
 CFLAGS += -m32
 LDFLAGS += -m32
 
-OBJS := $(SRC_DIR)/server
+OBJS := $(SRC_DIR)/server $(SRC_DIR)/../jsmn/jsmn
 
 ## Libraries to include in shared object file
 
@@ -41,7 +41,8 @@ LIB_PATH = $(CURDIR)/../../common/lib/debug/linux
 ## Add driver-specific include directory to the search path
 
 INC_PATH += $(CURDIR) $(CURDIR)/../include \
-	        $(CURDIR)/../../common/include
+	        $(CURDIR)/../../common/include \
+            $(SRC_DIR)/../jsmn
 
 ifeq ($(PWLIB_SUPPORT),1)
    INC_PATH += $(PWLIBDIR)/include/ptlib/unix $(PWLIBDIR)/include

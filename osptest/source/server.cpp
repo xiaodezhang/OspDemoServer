@@ -1,6 +1,7 @@
 #include"osp.h"
 #include"server.h"
 #include"list.h"
+#include"jsmn.h"
 
 #define MAKEESTATE(state,event) ((u32)((event)<< 4 +(state)))
 #define MAX_USER_NAME_LENGTH           100
@@ -10,6 +11,8 @@
 #define USE_CONNECT_FLAG  0
 #define SYS_LOG_LEVEL_REPEAT             0
 #define MAX_UPLOAD_ACK                 2000 
+#define CACHE_TAIL               (8*4)
+
 
 CSApp g_cCSApp;
 
@@ -18,6 +21,8 @@ s8 buffer[BUFFER_SIZE];
 struct list_head tClientList; //客户端表，一个node一个客户端
 struct list_head tFileList;   //文件表
 struct list_head tUserList;   //用户表
+
+static int jsoneq(const char *json, jsmntok_t *tok, const char *s);
 
 typedef struct tagFileList{
         struct list_head       tListHead;
@@ -1387,42 +1392,85 @@ void CSInstance::SignIn(CMessage *const pMsg){
        TClientList *tnClient,*tClient;
        bool inUserList;
 
+       jsmn_parser p;
+       jsmntok_t t[128];
+       int r,i;
+       s8  UserName[AUTHORIZATION_NAME_SIZE+CACHE_TAIL];
+       s8  Pwd[AUTHORIZATION_NAME_SIZE+CACHE_TAIL];
+       s8* signInfo;
+       s8 ClientAck_s[8+CACHE_TAIL];
+
+
        wClientAck = 0;
        if(!pMsg->content || pMsg->length <= 0){
                //通知客户端
                 OspLog(LOG_LVL_ERROR,"[SignIn] pMsg is NULL\n");
-                wClientAck = -1;
+                wClientAck = 1;
                 goto post2client;
        }
        
+        signInfo = (s8*)pMsg->content;
+        jsmn_init(&p);
+        r = jsmn_parse(&p,(LPCSTR)signInfo,pMsg->length,t,sizeof(t)/sizeof(t[0]));
+        if(r < 0){
+                OspLog(LOG_LVL_ERROR,"[SignIn]json parser error:%d\n",r);
+                wClientAck = 2;
+                goto post2client;
+        }
+        if(r < 1 || t[0].type != JSMN_OBJECT){
+                OspLog(LOG_LVL_ERROR,"[SignIn]json object expected\n");
+                wClientAck = 3;
+                goto post2client;
+        }
+
+        for(i = 1;i < r;i++){
+                if(jsoneq((LPCSTR)signInfo,&t[i],"UserName") == 0){
+                        sprintf(UserName,"%.*s",t[i+1].end-t[i+1].start,
+                                        signInfo+t[i+1].start);
+                        i++;
+                }
+                else if(jsoneq((LPCSTR)signInfo,&t[i],"Pwd") == 0){
+                        sprintf(Pwd,"%.*s",t[i+1].end-t[i+1].start,
+                                        signInfo+t[i+1].start);
+                        i++;
+
+                }else{ 
+                        OspLog(LOG_LVL_ERROR,"[FileUploadAck]Unexpected key:%.*s\n"
+                                        ,t[i].end-t[i].start,signInfo+t[i].start);
+
+                }
+        }
+
        inUserList = false;
        //查找用户表
        list_for_each(tUserHead,&tUserList){
                tnUser = list_entry(tUserHead,TUserList,tListHead);
-               if(0 == strcmp((LPCSTR)tnUser->chUserName,(LPCSTR)pMsg->content)){
-                       //允许登陆
+               if(0 == strcmp((LPCSTR)tnUser->chUserName,(LPCSTR)UserName)){
+                       if(0 == strcmp((LPCSTR)tnUser->chPasswd,(LPCSTR)Pwd)){
+                               //允许登陆
 #if THREAD_SAFE_MALLOC
-                       tClient = (TClientList*)malloc(sizeof(TClientList));
+                               tClient = (TClientList*)malloc(sizeof(TClientList));
 #else
-                       tClient = new TClientList();
+                               tClient = new TClientList();
 #endif
-                       if(!tClient){
-                            OspLog(LOG_LVL_ERROR,"[SignIn]client list malloc failed\n");
-                            wClientAck = -2;
-                            goto post2client;
+                               if(!tClient){
+                                    OspLog(LOG_LVL_ERROR,"[SignIn]client list malloc failed\n");
+                                    wClientAck = 2;
+                                    goto post2client;
+                               }
+                               //是否在客户端表中
+                               if(!CheckSign(pMsg->srcnode,NULL)){
+                                       //插入客户端表
+                                       tClient->wClientId = pMsg->srcnode;
+                                       list_add(&tClient->tListHead,&tClientList);
+                               }
+                               inUserList = true;
+                               break;
                        }
-                       //是否在客户端表中
-                       if(!CheckSign(pMsg->srcnode,NULL)){
-                               //插入客户端表
-                               tClient->wClientId = pMsg->srcnode;
-                               list_add(&tClient->tListHead,&tClientList);
-                       }
-                       inUserList = true;
-                       break;
                }
        }
        if(!inUserList){
-               wClientAck = -3;
+               wClientAck = 3;
                OspLog(SYS_LOG_LEVEL,"[SignIn]sign in failed\n");
                goto post2client;
        }
@@ -1434,13 +1482,14 @@ void CSInstance::SignIn(CMessage *const pMsg){
         //断链注册
        if(OSP_OK !=OspNodeDiscCBRegQ(pMsg->srcnode,SERVER_APP_ID,CInstance::DAEMON)){
                OspLog(LOG_LVL_ERROR,"[SignIn]regis disconnect error\n");
-               wClientAck = -4;
+               wClientAck = 4;
                goto post2client;
        }
        OspLog(SYS_LOG_LEVEL,"[SignIn]sign in\n");
 
 post2client:
-       if(OSP_OK != post(pMsg->srcid,SIGN_IN_ACK,&wClientAck,sizeof(wClientAck),pMsg->srcnode)){
+       sprintf(ClientAck_s,"{\"ClientAck\":%d}",wClientAck);
+       if(OSP_OK != post(pMsg->srcid,SIGN_IN_ACK,(LPCSTR)ClientAck_s,strlen(ClientAck_s)+1,pMsg->srcnode)){
                OspLog(SYS_LOG_LEVEL,"[SignIn]post back:%d\n",wClientAck);
        }
        return;
@@ -1453,6 +1502,7 @@ void CSInstance::SignOut(CMessage* const pMsg){
         TFileList *tnFile;
         CSInstance *pIns;
         wClientAck = 0;
+       s8 ClientAck_s[8+CACHE_TAIL];
 
 #if USE_CONNECT_FLAG 
         if(!m_bConnectedFlag){
@@ -1463,7 +1513,7 @@ void CSInstance::SignOut(CMessage* const pMsg){
 #endif
         if(!CheckSign(pMsg->srcnode,&tClient)){
                  OspLog(LOG_LVL_ERROR,"[SignOut]not signed,sign in first\n");
-                 wClientAck = -1;
+                 wClientAck = 1;
                  goto post2client;
         }
 
@@ -1521,10 +1571,20 @@ void CSInstance::SignOut(CMessage* const pMsg){
         OspLog(SYS_LOG_LEVEL,"[SignOut]sign out\n");
 
 post2client:
-        if(OSP_OK != post(pMsg->srcid,SIGN_OUT_ACK,&wClientAck
-              ,sizeof(wClientAck),pMsg->srcnode)){
+
+        sprintf(ClientAck_s,"{\"ClientAck\":%d}",wClientAck);
+        if(OSP_OK != post(pMsg->srcid,SIGN_OUT_ACK,(LPCSTR)ClientAck_s
+              ,strlen(ClientAck_s)+1,pMsg->srcnode)){
                 OspPrintf(1,0,"[SignOut]post back failed\n");
         }
         return;
+}
+
+static int jsoneq(const char *json, jsmntok_t *tok, const char *s) {
+	if (tok->type == JSMN_STRING && (int) strlen(s) == tok->end - tok->start &&
+			strncmp(json + tok->start, s, tok->end - tok->start) == 0) {
+		return 0;
+	}
+	return -1;
 }
 

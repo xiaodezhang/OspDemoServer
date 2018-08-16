@@ -30,7 +30,7 @@
 #define IDLE_STATE                         0
 #define EV_CLIENT_TEST_BGN                (u16)0x1111
 #define SERVER_CONNECT_TEST               (EV_CLIENT_TEST_BGN+1)
-#define AUTHORIZATION_NAME_SIZE            20
+#define AUTHORIZATION_NAME_SIZE            200
 
 #define BUFFER_SIZE                       (u16)(MAX_MSG_LEN / 2)
 #define MAX_FILE_NAME_LENGTH               200
