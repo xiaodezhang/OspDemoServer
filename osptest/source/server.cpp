@@ -9,6 +9,7 @@
 
 #define USE_CONNECT_FLAG  0
 #define SYS_LOG_LEVEL_REPEAT             0
+#define MAX_UPLOAD_ACK                 2000 
 
 CSApp g_cCSApp;
 
@@ -21,7 +22,7 @@ struct list_head tUserList;   //用户表
 typedef struct tagFileList{
         struct list_head       tListHead;
         u8                     FileName[MAX_FILE_NAME_LENGTH];
-        EM_FILE_STATUS         FileStatus;
+        u32                    FileStatus;
         u16                    DealInstance;
         u32                    wClientId;     //从属客户端
 }TFileList;
@@ -48,7 +49,7 @@ typedef struct tagDemoInfo{
 }TDemoInfo;
 
 typedef struct tagUploadAck{
-        EM_FILE_STATUS emFileStatus;
+        u32            FileStatus;
         s16            wClientAck;
 }TUploadAck;
 
@@ -444,6 +445,7 @@ void CSInstance::FileReceiveUpload(CMessage* const pMsg){
 
         TFileList *tnFile;
         TDemoInfo *tDemoInfo;
+        u8 uploadAck[MAX_UPLOAD_ACK];
 
         tDemoInfo = (TDemoInfo*)pMsg->content;
         strcpy((LPSTR)file_name_path,(LPCSTR)tDemoInfo->fileName);
@@ -493,7 +495,7 @@ void CSInstance::FileReceiveUpload(CMessage* const pMsg){
         }
 
 #endif
-        emFileStatus = STATUS_UPLOADING;
+        FileStatus = STATUS_UPLOADING;
         tnFile->FileStatus = STATUS_UPLOADING;
 
 post2client:
@@ -506,9 +508,12 @@ post2client:
         }
 
         tUploadAck.wClientAck = wClientAck;
-        tUploadAck.emFileStatus = emFileStatus;
-        if(OSP_OK != post(tDemoInfo->srcid,FILE_UPLOAD_ACK,&tUploadAck
-              ,sizeof(tUploadAck),tDemoInfo->srcnode)){
+        tUploadAck.FileStatus = FileStatus;
+        sprintf((LPSTR)uploadAck,"{\"ClientAck\":%d,\"FileStatus\":%d}",
+                        wClientAck,FileStatus);
+
+        if(OSP_OK != post(tDemoInfo->srcid,FILE_UPLOAD_ACK,&uploadAck
+              ,strlen((LPCSTR)uploadAck)+1,tDemoInfo->srcnode)){
                 OspPrintf(1,0,"[FileReceiveUpload]post back failed\n");
                 return;
         }
@@ -521,6 +526,7 @@ post2client:
 void CSInstance::FileUpload(CMessage* const pMsg){
 
      TFileList *tnFile;
+     u8 uploadAck[MAX_UPLOAD_ACK];
 
      if(!m_bSignInFlag){
                 OspLog(LOG_LVL_ERROR,"[FileUpload]not sign in\n");
@@ -559,12 +565,23 @@ post2client:
                 file = INVALID_FILEHANDLE;
         }
         tUploadAck.wClientAck = wClientAck;
-        tUploadAck.emFileStatus = emFileStatus;
+        tUploadAck.FileStatus = FileStatus;
+        sprintf((LPSTR)uploadAck,"{\"ClientAck\":%d,\"FileStatus\":%d}",
+                        wClientAck,FileStatus);
+#if 0
         if(OSP_OK != post(pMsg->srcid,FILE_UPLOAD_ACK,&tUploadAck
               ,sizeof(tUploadAck),pMsg->srcnode)){
                 OspPrintf(1,0,"[FileUpload]post back failed\n");
                 return;
         }
+#else
+        if(OSP_OK != post(pMsg->srcid,FILE_UPLOAD_ACK,uploadAck
+              ,strlen((LPCSTR)uploadAck)+1,pMsg->srcnode)){
+                OspPrintf(1,0,"[FileUpload]post back failed\n");
+                return;
+        }
+
+#endif
 //     OspLog(SYS_LOG_LEVEL_REPEAT,"[FileUpload]Get data,send upload ack\n");
 }
 
@@ -598,7 +615,7 @@ void CSInstance::FileFinish(CMessage* const pMsg){
      OspLog(SYS_LOG_LEVEL,"[FileFinish]file closed\n");
 
      if(wClientAck == 0){
-             emFileStatus = STATUS_FINISHED;
+             FileStatus = STATUS_FINISHED;
              CheckFileIn((LPCSTR)file_name_path,&tFile);
              tFile->FileStatus = STATUS_FINISHED;
              OspLog(SYS_LOG_LEVEL,"[FileFinish]file finished\n");
@@ -646,11 +663,13 @@ void CSInstance::ReceiveCancel(CMessage* const pMsg){
                 wClientAck = 3;
                 goto postError2client;
         }
+#if 0
         if(tFile->FileStatus == STATUS_RECEIVE_CANCEL){
                OspLog(SYS_LOG_LEVEL,"[ReceiveCancel]wait for cancelling\n");
                wClientAck = 4;
                goto postError2client;
         }
+#endif
 #if 0
         if(tFile->FileStatus >= STATUS_RECEIVE_UPLOAD &&
                         tFile->FileStatus <= STATUS_RECEIVE_REMOVE){
@@ -666,7 +685,7 @@ void CSInstance::ReceiveCancel(CMessage* const pMsg){
                  wClientAck = 5;
                  goto postError2client;
         }
-        emFileStatus = STATUS_RECEIVE_CANCEL;
+        FileStatus = STATUS_RECEIVE_CANCEL;
         tFile->FileStatus = STATUS_RECEIVE_CANCEL;
         OspLog(SYS_LOG_LEVEL,"[ReceiveCancel]receive cancel msg\n");
         return;
@@ -719,7 +738,7 @@ void CSInstance::FileCancel(CMessage* const pMsg){
         CheckFileIn((LPCSTR)file_name_path,&tFile);
 
         tFile->FileStatus = STATUS_CANCELLED;
-        emFileStatus = STATUS_CANCELLED;
+        FileStatus = STATUS_CANCELLED;
         NextState(IDLE_STATE);
         OspLog(SYS_LOG_LEVEL,"[FileCancel]file cancelled\n");
 
@@ -791,7 +810,7 @@ void CSInstance::ReceiveRemove(CMessage* const pMsg){
         }
 
         tFile->FileStatus = STATUS_RECEIVE_REMOVE;
-        emFileStatus = STATUS_RECEIVE_REMOVE;
+        FileStatus = STATUS_RECEIVE_REMOVE;
         OspLog(SYS_LOG_LEVEL,"[ReceiveRemove]receive remove msg\n");
 
         return;
@@ -854,12 +873,14 @@ void CSInstance::FileGoOn(CMessage* const pMsg){
                  goto postError2client;
         }
 
+#if 0
         if(tnFile->FileStatus == STATUS_RECEIVE_GO_ON){
                OspLog(SYS_LOG_LEVEL,"[FileGoOn]wait for going on\n");
                wClientAck = 6;
                goto postError2client;
         }
 
+#endif
 #if 0
         if(tnFile->FileStatus >= STATUS_RECEIVE_UPLOAD &&
                         tnFile->FileStatus <= STATUS_RECEIVE_REMOVE){
@@ -902,7 +923,7 @@ void CSInstance::FileGoOn(CMessage* const pMsg){
                 ins->m_bSignInFlag = false;
                 goto postError2client;
         }
-        tnFile->FileStatus = STATUS_RECEIVE_GO_ON;
+        tnFile->FileStatus = STATUS_UPLOADING;
         tnFile->DealInstance = ins->GetInsID();
         tnFile->wClientId = pMsg->srcnode;
         OspLog(SYS_LOG_LEVEL,"[FileGoOn]receive go on\n");
@@ -979,9 +1000,9 @@ void CSInstance::FileGoOnDeal(CMessage* const pMsg){
 #elif defined _MSC_VER
 #endif
 
-        emFileStatus = STATUS_UPLOADING;
-        if(OSP_OK != post(tDemoInfo->srcid,FILE_UPLOAD_ACK,&emFileStatus
-              ,sizeof(emFileStatus),tDemoInfo->srcnode)){
+        FileStatus = STATUS_UPLOADING;
+        if(OSP_OK != post(tDemoInfo->srcid,FILE_UPLOAD_ACK,&FileStatus
+              ,sizeof(FileStatus),tDemoInfo->srcnode)){
                 OspPrintf(1,0,"[FileGoOnDeal]post back failed\n");
                 printf("[FileGoOnDeal]post back failed\n");
                 return;
@@ -1045,7 +1066,7 @@ void CSInstance::FileRemove(CMessage* const pMsg){
                 OspLog(SYS_LOG_LEVEL,"[FileStableRemoveDeal]post back,clientack:%d\n",tRemoveAck.wClientAck);
         }
 #endif
-        emFileStatus = STATUS_REMOVED;
+        FileStatus = STATUS_REMOVED;
         tFile->FileStatus = STATUS_REMOVED;
         OspLog(SYS_LOG_LEVEL,"[FileRemove]file removed\n");
 }
@@ -1191,7 +1212,7 @@ void CSInstance::FileStableRemoveDeal(CMessage* const pMsg){
 #ifdef _LINUX_
         if(unlink((LPCSTR)file_name_path) == 0){
                 OspLog(SYS_LOG_LEVEL,"[FileStableRemoveDeal]file removed\n");
-                emFileStatus = STATUS_REMOVED;
+                FileStatus = STATUS_REMOVED;
                 tRemoveAck.wClientAck = 0;
                 if(OSP_OK != post(tDemoInfo->srcid,FILE_REMOVE_ACK
                                     ,&tRemoveAck,sizeof(tRemoveAck),tDemoInfo->srcnode)){
@@ -1255,7 +1276,7 @@ void CSInstance::DealDisconnect(CMessage* const pMsg){
                        }
                        pIns->m_bSignInFlag = false;
                        pIns->m_curState = IDLE_STATE;
-                       pIns->emFileStatus = STATUS_INIT;
+                       pIns->FileStatus = STATUS_INIT;
                        list_del(&(tnFile->tListHead));
 #if THREAD_SAFE_MALLOC
                        free(tnFile);
@@ -1460,7 +1481,7 @@ void CSInstance::SignOut(CMessage* const pMsg){
                        }
                        if(tnFile->FileStatus == STATUS_UPLOADING){
                                 tnFile->FileStatus = STATUS_CANCELLED;
-//                                pIns->emFileStatus = STATUS_CANCELLED;
+//                                pIns->FileStatus = STATUS_CANCELLED;
                                 pIns->m_curState = IDLE_STATE;
                                 if(INVALID_FILEHANDLE != pIns->file){
                                         if(close(pIns->file) == -1){
@@ -1478,7 +1499,7 @@ void CSInstance::SignOut(CMessage* const pMsg){
 
                         tnFile->FileStatus = STATUS_INIT;
                         pIns->m_curState = IDLE_STATE;
-                        pIns->emFileStatus = STATUS_INIT;
+                        pIns->FileStatus = STATUS_INIT;
                         pIns->m_bSignInFlag = false;
                         if(pIns->file){
                                 if(close(pIns->file) == -1){

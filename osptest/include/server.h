@@ -55,10 +55,20 @@
 #define FILE_STABLE_REMOVE_DEAL           (EV_CLIENT_TEST_BGN+43)
 
 
+#define STATUS_INIT                     (u32)0
+#define STATUS_RECEIVE_UPLOAD           (u32)9
+#define STATUS_RECEIVE_CANCEL           (u32)10
+#define STATUS_RECEIVE_REMOVE           (u32)12
+#define STATUS_UPLOADING                (u32)13
+#define STATUS_CANCELLED                (u32)14
+#define STATUS_REMOVED                  (u32)15
+#define STATUS_FINISHED                 (u32)16
+
 
 const u8 SERVER_APP_PRI                  = 80;
 const u32 MAX_MSG_WAITING                = 512;
 
+#if 0
 typedef enum tagEM_FILE_STATUS{
                 STATUS_INIT             = -1,
                 //processing state
@@ -80,6 +90,7 @@ typedef enum tagEM_FILE_STATUS{
                 STATUS_REMOVED          = 15,
                 STATUS_FINISHED         = 16
 }EM_FILE_STATUS;
+#endif
 
 class CSInstance : public CInstance{
 
@@ -96,7 +107,7 @@ private:
         }tCmdNode;
 
 
-        EM_FILE_STATUS emFileStatus;
+        u32        FileStatus;  //避免数据上传的时候从文件表中多次查询
 
 //        FILE *file;
         FILEHANDLE file;
@@ -104,7 +115,7 @@ private:
         tCmdNode *m_tCmdDaemonChain;
         bool     m_bConnectedFlag;
 public:
-        CSInstance():file(INVALID_FILEHANDLE),emFileStatus(STATUS_INIT)
+        CSInstance():file(INVALID_FILEHANDLE),FileStatus(STATUS_INIT)
                      ,m_tCmdChain(NULL),m_tCmdDaemonChain(NULL)
                      ,m_bConnectedFlag(false)
                      ,m_bSignInFlag(false){
