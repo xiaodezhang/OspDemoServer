@@ -32,11 +32,12 @@ typedef struct tagFileList{
         u32                    wClientId;     //从属客户端
 }TFileList;
 
-//已登录客户端表
+//已连接客户端表
 typedef struct tagClientList{
         struct list_head       tListHead;
         u32                    wClientId;     //客户端node作为id
         u8                     chUserName[MAX_USER_NAME_LENGTH+1];
+        bool                   bSignFlag;
 }TClientList;
 
 typedef struct tagUserList{
@@ -325,6 +326,7 @@ void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){
         CSInstance *ins;
         u8 wFileName[MAX_FILE_NAME_LENGTH];
         LPSTR p;
+        u8 uploadAck[MAX_UPLOAD_ACK];
 
         wClientAck = 0;
 #if USE_CONNECT_FLAG 
@@ -431,6 +433,7 @@ void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){
        }
        strcpy((LPSTR)tnFile->FileName,(LPCSTR)wFileName);
        tnFile->FileStatus = STATUS_RECEIVE_UPLOAD;
+       FileStatus = STATUS_RECEIVE_UPLOAD;
        tnFile->DealInstance = ins->GetInsID();
        tnFile->wClientId = pMsg->srcnode;
 
@@ -438,8 +441,11 @@ void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){
 
 postError2client:
 
-       tUploadAck.wClientAck = wClientAck;
-       if(OSP_OK != post(pMsg->srcid,FILE_UPLOAD_ACK,&tUploadAck,sizeof(tUploadAck),pMsg->srcnode)){
+       sprintf((LPSTR)uploadAck,"{\"ClientAck\":%d,\"FileStatus\":%d}",
+                        wClientAck,FileStatus);
+
+       if(OSP_OK != post(pMsg->srcid,FILE_UPLOAD_ACK,(LPCSTR)uploadAck
+                               ,strlen((LPCSTR)uploadAck)+1,pMsg->srcnode)){
                OspLog(SYS_LOG_LEVEL,"[DaemonFileReceiveUpload]post back:%d\n",wClientAck);
        }
        return;
@@ -516,7 +522,6 @@ post2client:
         tUploadAck.FileStatus = FileStatus;
         sprintf((LPSTR)uploadAck,"{\"ClientAck\":%d,\"FileStatus\":%d}",
                         wClientAck,FileStatus);
-
         if(OSP_OK != post(tDemoInfo->srcid,FILE_UPLOAD_ACK,&uploadAck
               ,strlen((LPCSTR)uploadAck)+1,tDemoInfo->srcnode)){
                 OspPrintf(1,0,"[FileReceiveUpload]post back failed\n");
@@ -1287,10 +1292,6 @@ void CSInstance::DealDisconnect(CMessage* const pMsg){
                                pIns->file = INVALID_FILEHANDLE;
                        }
 
-                       if(!pIns){
-                               OspLog(LOG_LVL_ERROR,"[DealDisconnect]get instance error\n");
-                               return;
-                       }
                        pIns->m_bSignInFlag = false;
                        pIns->m_curState = IDLE_STATE;
                        pIns->FileStatus = STATUS_INIT;
@@ -1334,17 +1335,14 @@ static bool CheckSign(u32 wClientId,TClientList **tClient){
 
         list_for_each(tClientHead,&tClientList){
                 tnClient = list_entry(tClientHead,TClientList,tListHead);
-                if(tnClient->wClientId == wClientId){
+                if(tnClient->wClientId == wClientId
+                                && tnClient->bSignFlag){
                         inClientList = true;
                         break;
                 }
         }
         if(tClient){
-                if(inClientList){
-                    *tClient = tnClient;
-                }else{
-                    *tClient = NULL;
-                }
+                *tClient = tnClient;
         }
         return inClientList;
 }
@@ -1412,12 +1410,17 @@ void CSInstance::SignIn(CMessage *const pMsg){
        s8* signInfo;
        s8 ClientAck_s[8+CACHE_TAIL];
 
-
        wClientAck = 0;
        if(!pMsg->content || pMsg->length <= 0){
                //通知客户端
                 OspLog(LOG_LVL_ERROR,"[SignIn] pMsg is NULL\n");
                 wClientAck = 1;
+                goto post2client;
+       }
+
+       if(CheckSign(pMsg->srcnode,&tnClient)){
+                OspLog(LOG_LVL_ERROR,"[SignIn]Already Sign in\n");
+                wClientAck = 5;
                 goto post2client;
        }
        
@@ -1460,21 +1463,31 @@ void CSInstance::SignIn(CMessage *const pMsg){
                if(0 == strcmp((LPCSTR)tnUser->chUserName,(LPCSTR)UserName)){
                        if(0 == strcmp((LPCSTR)tnUser->chPasswd,(LPCSTR)Pwd)){
                                //允许登陆
+                               if(!tnClient){
 #if THREAD_SAFE_MALLOC
-                               tClient = (TClientList*)malloc(sizeof(TClientList));
+                                       tClient = (TClientList*)malloc(sizeof(TClientList));
 #else
-                               tClient = new TClientList();
+                                       tClient = new TClientList();
 #endif
-                               if(!tClient){
-                                    OspLog(LOG_LVL_ERROR,"[SignIn]client list malloc failed\n");
-                                    wClientAck = 2;
-                                    goto post2client;
-                               }
-                               //是否在客户端表中
-                               if(!CheckSign(pMsg->srcnode,NULL)){
+                                       if(!tClient){
+                                            OspLog(LOG_LVL_ERROR,"[SignIn]client list malloc failed\n");
+                                            wClientAck = 2;
+                                            goto post2client;
+                                       }
                                        //插入客户端表
                                        tClient->wClientId = pMsg->srcnode;
+                                       tClient->bSignFlag = true;
                                        list_add(&tClient->tListHead,&tClientList);
+                                       //断链注册
+                                       if(OSP_OK !=OspNodeDiscCBRegQ(pMsg->srcnode,SERVER_APP_ID
+                                                               ,CInstance::DAEMON)){
+                                               OspLog(LOG_LVL_ERROR,"[SignIn]regis disconnect error\n");
+                                               wClientAck = 4;
+                                               goto post2client;
+                                       }
+
+                               }else{
+                                       tnClient->bSignFlag = true;
                                }
                                inUserList = true;
                                break;
@@ -1491,12 +1504,6 @@ void CSInstance::SignIn(CMessage *const pMsg){
        m_bConnectedFlag = true;
 #endif
 
-        //断链注册
-       if(OSP_OK !=OspNodeDiscCBRegQ(pMsg->srcnode,SERVER_APP_ID,CInstance::DAEMON)){
-               OspLog(LOG_LVL_ERROR,"[SignIn]regis disconnect error\n");
-               wClientAck = 4;
-               goto post2client;
-       }
        OspLog(SYS_LOG_LEVEL,"[SignIn]sign in\n");
 
 post2client:
@@ -1529,10 +1536,6 @@ void CSInstance::SignOut(CMessage* const pMsg){
                  goto post2client;
         }
 
-        if(OSP_OK !=OspNodeDelDiscCB(pMsg->srcnode,SERVER_APP_ID,CInstance::DAEMON)){
-                 OspLog(LOG_LVL_ERROR,"[SignOut]del discb failed\n");
-        }
-
         list_for_each_safe(tFileHead,templist,&tFileList){
                 tnFile = list_entry(tFileHead,TFileList,tListHead);
                 if(tnFile->wClientId == pMsg->srcnode){
@@ -1543,15 +1546,16 @@ void CSInstance::SignOut(CMessage* const pMsg){
                        }
                        if(tnFile->FileStatus == STATUS_UPLOADING){
                                 tnFile->FileStatus = STATUS_CANCELLED;
-//                                pIns->FileStatus = STATUS_CANCELLED;
+                                pIns->FileStatus = STATUS_CANCELLED;
                                 pIns->m_curState = IDLE_STATE;
+                                pIns->m_bSignInFlag = false;
                                 if(INVALID_FILEHANDLE != pIns->file){
                                         if(close(pIns->file) == -1){
                                                 OspLog(LOG_LVL_ERROR,"[SignOut]file close failed\n");
                                         }else{
                                                 OspLog(SYS_LOG_LEVEL,"[SignOut]file closed\n");
                                         }
-                                        file = INVALID_FILEHANDLE;
+                                        pIns->file = INVALID_FILEHANDLE;
                                 }
                                 continue;
                         }
@@ -1563,7 +1567,7 @@ void CSInstance::SignOut(CMessage* const pMsg){
                         pIns->m_curState = IDLE_STATE;
                         pIns->FileStatus = STATUS_INIT;
                         pIns->m_bSignInFlag = false;
-                        if(pIns->file){
+                        if(pIns->file != INVALID_FILEHANDLE){
                                 if(close(pIns->file) == -1){
                                         OspLog(LOG_LVL_ERROR,"[SignOut]file close failed\n");
                                 }else{
@@ -1574,12 +1578,7 @@ void CSInstance::SignOut(CMessage* const pMsg){
                 }
         }
 
-        list_del(&(tClient->tListHead));
-#if THREAD_SAFE_MALLOC
-        free(tClient);
-#else
-        delete tClient;
-#endif
+        tClient->bSignFlag = false;
         OspLog(SYS_LOG_LEVEL,"[SignOut]sign out\n");
 
 post2client:
