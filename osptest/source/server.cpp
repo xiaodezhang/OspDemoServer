@@ -1331,20 +1331,26 @@ static bool CheckSign(u32 wClientId,TClientList **tClient){
 
         struct list_head *tClientHead;
         TClientList *tnClient = NULL;
-        bool inClientList = false;
+        bool inClientList = false,SignIn = false;
 
         list_for_each(tClientHead,&tClientList){
                 tnClient = list_entry(tClientHead,TClientList,tListHead);
-                if(tnClient->wClientId == wClientId
-                                && tnClient->bSignFlag){
+                if(tnClient->wClientId == wClientId){
                         inClientList = true;
+                        if(tnClient->bSignFlag){
+                                SignIn = true;
+                        }
                         break;
                 }
         }
         if(tClient){
-                *tClient = tnClient;
+                if(inClientList){
+                     *tClient = tnClient;
+                }else{
+                     *tClient = NULL;
+                }
         }
-        return inClientList;
+        return SignIn;
 }
 
 static bool CheckFileIn(LPCSTR filename,TFileList **tFile){
