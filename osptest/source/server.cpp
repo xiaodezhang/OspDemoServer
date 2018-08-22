@@ -341,17 +341,18 @@ void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){
                  return;
         }
 
+        do{
         if(!pMsg->content || pMsg->length <= 0){
                 OspLog(LOG_LVL_ERROR,"[DaemonFileReceiveUpload]file name is NULL\n");
                 wClientAck = 1;
-                goto postError2client;
+                break;
         }
 
         if(pMsg->length > MAX_FILE_NAME_LENGTH-1 ||
                         pMsg->length <= 0 || !pMsg->content){
                 OspLog(LOG_LVL_ERROR,"[DaemonFileReceiveUpload] file name error\n");
                 wClientAck = 2;
-                goto postError2client;
+                break;
         }
 
         //absolute path deal
@@ -371,7 +372,7 @@ void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){
                         OspLog(SYS_LOG_LEVEL,"[DaemonFileReceiveUpload]file being operated:%s\n",
                                         wFileName);
                         wClientAck = 4;
-                        goto postError2client;
+                        break;
                 }else{
                         //TODO:同一用户操作
                         if(tnFile->wClientId != pMsg->srcnode){
@@ -380,7 +381,7 @@ void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){
                                        OspLog(SYS_LOG_LEVEL,"[DaemonFileReceiveUpload]file being used by"
                                                        "another client\n");
                                        wClientAck = 5;
-                                       goto postError2client;
+                                       break;
                                }
                         }
                 }
@@ -399,7 +400,7 @@ void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){
        if(!(ins = GetPendingIns())){
                 OspLog(LOG_LVL_ERROR,"[DaemonFileReceiveUpload]no pending instance\n");
                 wClientAck  = 7;
-                goto postError2client;
+                break;
        }
        tDemoInfo.srcid = pMsg->srcid;
        tDemoInfo.srcnode = pMsg->srcnode;
@@ -416,7 +417,7 @@ void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){
                wClientAck = 8;
                ins->m_curState = IDLE_STATE;
                ins->m_bSignInFlag = false;
-               goto postError2client;
+               break;
        }
 
         //加入文件表
@@ -427,7 +428,7 @@ void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){
                     wClientAck = 9;
                     ins->m_curState = IDLE_STATE;
                     ins->m_bSignInFlag = false;
-                    goto postError2client;
+                    break;
                }
                list_add(&(tnFile->tListHead),&tFileList);
        }
@@ -439,7 +440,7 @@ void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){
 
        return;
 
-postError2client:
+        }while(0);
 
        sprintf((LPSTR)uploadAck,"{\"ClientAck\":%d,\"FileStatus\":%d}",
                         wClientAck,FileStatus);
@@ -448,7 +449,6 @@ postError2client:
                                ,strlen((LPCSTR)uploadAck)+1,pMsg->srcnode)){
                OspLog(SYS_LOG_LEVEL,"[DaemonFileReceiveUpload]post back:%d\n",wClientAck);
        }
-       return;
 }
 
 void CSInstance::FileReceiveUpload(CMessage* const pMsg){
@@ -469,6 +469,7 @@ void CSInstance::FileReceiveUpload(CMessage* const pMsg){
 
         CheckFileIn((LPCSTR)file_name_path,&tnFile);
 
+        do{
 #ifdef _LINUX_
         struct flock fl;
         if(INVALID_FILEHANDLE == (file = open((LPCSTR)file_name_path
@@ -476,7 +477,7 @@ void CSInstance::FileReceiveUpload(CMessage* const pMsg){
                 //TODO:get the errno
                 OspLog(LOG_LVL_ERROR,"[FileReceiveUpload]file open error\n");
                 wClientAck = 10;
-                goto post2client;
+                break;
         }
 
         fl.l_type = F_WRLCK;
@@ -494,7 +495,7 @@ void CSInstance::FileReceiveUpload(CMessage* const pMsg){
                 }
                 close(file);
                 file = INVALID_FILEHANDLE;
-                goto post2client;
+                break;
         }
 
 #elif defined _MSC_VER
@@ -502,14 +503,15 @@ void CSInstance::FileReceiveUpload(CMessage* const pMsg){
                                         ,tDemoInfo->appendFlag ? "ab" : "rb"))){
                 OspLog(LOG_LVL_ERROR,"[FileReceiveUpload]file open error\n");
                 wClientAck = 10;
-                goto post2client;
+                break;
         }
 
 #endif
         FileStatus = STATUS_UPLOADING;
         tnFile->FileStatus = STATUS_UPLOADING;
 
-post2client:
+        }while(0);
+
         if(wClientAck){
                 if(!tDemoInfo->appendFlag){
                         list_del(&tnFile->tListHead);
@@ -543,10 +545,11 @@ void CSInstance::FileUpload(CMessage* const pMsg){
                 return;
      }
      wClientAck = 0;
+     do{
      //TODO:增加缓冲
      if(!pMsg->content || pMsg->length <= 0){
              wClientAck = 13;
-             goto post2client;
+             break;
      }
 #ifdef _LINUX_
      if(-1 == write(file,pMsg->content,sizeof(s8)*pMsg->length)){
@@ -557,10 +560,10 @@ void CSInstance::FileUpload(CMessage* const pMsg){
              //TODO:print errno
              OspLog(LOG_LVL_ERROR,"[FileUpload]file upload write error\n");
              wClientAck = 14;
-             goto post2client;
+             break;
      }
 
-post2client:
+     }while(0);
 
         if(wClientAck){
                 CheckFileIn((LPCSTR)file_name_path,&tnFile);
@@ -651,10 +654,11 @@ void CSInstance::ReceiveCancel(CMessage* const pMsg){
 
         wClientAck = 0;
 
+        do{
         if(!pMsg->content || pMsg->length <= 0){
                 OspLog(LOG_LVL_ERROR,"[ReceiveCancel]msg is NULL\n");
                 wClientAck = 1;
-                goto postError2client;
+                break;
         }
         //absolute path deal
         if((p = strrchr((LPSTR)pMsg->content,'/'))){
@@ -669,12 +673,12 @@ void CSInstance::ReceiveCancel(CMessage* const pMsg){
         if(!CheckFileIn((LPCSTR)file_name_path,&tFile)){
                 OspLog(LOG_LVL_ERROR,"[ReceiveCancel]file:%s not in list\n",file_name_path);
                 wClientAck = 2;
-                goto postError2client;
+                break;
         }
         if(tFile->DealInstance != GetInsID()){
                 OspLog(LOG_LVL_ERROR,"[ReceiveCancel]get error instance\n");
                 wClientAck = 3;
-                goto postError2client;
+                break;
         }
 #if 0
         if(tFile->FileStatus == STATUS_RECEIVE_CANCEL){
@@ -683,27 +687,17 @@ void CSInstance::ReceiveCancel(CMessage* const pMsg){
                goto postError2client;
         }
 #endif
-#if 0
-        if(tFile->FileStatus >= STATUS_RECEIVE_UPLOAD &&
-                        tFile->FileStatus <= STATUS_RECEIVE_REMOVE){
-                if(OSP_OK != post(MAKEIID(GetAppID(),GetInsID()),FILE_RECEIVE_CANCEL
-                               ,pMsg->content,pMsg->length)){
-                        OspLog(LOG_LVL_ERROR,"[ReceiveCancel] post error\n");
-                        return;
-                }
-        }
-#endif
         if(tFile->FileStatus != STATUS_UPLOADING){
                  OspLog(LOG_LVL_ERROR,"[ReceiveCancel]file not uploading\n");
                  wClientAck = 5;
-                 goto postError2client;
+                 break;
         }
         FileStatus = STATUS_RECEIVE_CANCEL;
         tFile->FileStatus = STATUS_RECEIVE_CANCEL;
         OspLog(SYS_LOG_LEVEL,"[ReceiveCancel]receive cancel msg\n");
         return;
 
-postError2client:
+        }while(0);
 
         sprintf(ClientAck_s,"{\"ClientAck\":%d}",wClientAck);
         if(OSP_OK != post(pMsg->srcid,FILE_CANCEL_ACK
@@ -734,6 +728,7 @@ void CSInstance::FileCancel(CMessage* const pMsg){
                 return;
         }
 #endif
+        do{
 #ifdef _LINUX_
         if(INVALID_FILEHANDLE == close(file)){//record locks removed
 #elif defined _MSC_VER_
@@ -743,7 +738,7 @@ void CSInstance::FileCancel(CMessage* const pMsg){
                 OspLog(LOG_LVL_ERROR,"[FileCancel]file close failed\n");
                 wClientAck = 7;
                 file = INVALID_FILEHANDLE;
-                goto post2client;
+                break;
                 //get the errno
         }
         file = INVALID_FILEHANDLE;
@@ -757,7 +752,7 @@ void CSInstance::FileCancel(CMessage* const pMsg){
         NextState(IDLE_STATE);
         OspLog(SYS_LOG_LEVEL,"[FileCancel]file cancelled\n");
 
-post2client:
+        }while(0);
 
         sprintf(ClientAck_s,"{\"ClientAck\":%d}",wClientAck);
         if(OSP_OK != post(pMsg->srcid,FILE_CANCEL_ACK
@@ -776,10 +771,12 @@ void CSInstance::ReceiveRemove(CMessage* const pMsg){
         s8 ClientRemoveAck[200+CACHE_TAIL];
 
         wClientAck = 0;
+
+        do{
         if(!pMsg->content || pMsg->length <= 0){
                 OspLog(LOG_LVL_ERROR,"[ReceiveRemove]msg is NULL\n");
                 wClientAck = 1;
-                goto postError2client;
+                break;
         }
 
         //absolute path deal
@@ -795,18 +792,18 @@ void CSInstance::ReceiveRemove(CMessage* const pMsg){
         if(!CheckFileIn((LPCSTR)file_name_path,&tFile)){
                 OspLog(LOG_LVL_ERROR,"[ReceiveRemove]file:%s not in list\n",file_name_path);
                 wClientAck = 2;
-                goto postError2client;
+                break;
         }
         if(tFile->DealInstance != GetInsID()){
                 OspLog(LOG_LVL_ERROR,"[ReceiveRemove]get error instance\n");
                 wClientAck = 3;
-                goto postError2client;
+                break;
         }
 
         if(tFile->FileStatus == STATUS_RECEIVE_REMOVE){
                OspLog(SYS_LOG_LEVEL,"[ReceiveRemove]wait for removing\n");
                wClientAck = 4;
-               goto postError2client;
+               break;
         }
 
 #if 0
@@ -823,7 +820,7 @@ void CSInstance::ReceiveRemove(CMessage* const pMsg){
         if(tFile->FileStatus != STATUS_UPLOADING){
                  OspLog(LOG_LVL_ERROR,"[ReceiveRemove]file not uploading\n");
                  wClientAck = 5;
-                 goto postError2client;
+                 break;
         }
 
         tFile->FileStatus = STATUS_RECEIVE_REMOVE;
@@ -831,7 +828,8 @@ void CSInstance::ReceiveRemove(CMessage* const pMsg){
         OspLog(SYS_LOG_LEVEL,"[ReceiveRemove]receive remove msg\n");
 
         return;
-postError2client:
+
+        }while(0);
        
        sprintf(ClientRemoveAck,"{\"ClientAck\":%d,\"stableFlag\":0}",wClientAck);
        if(OSP_OK != post(pMsg->srcid,FILE_REMOVE_ACK,ClientRemoveAck,strlen(ClientRemoveAck)+1,pMsg->srcnode)){
@@ -850,17 +848,19 @@ void CSInstance::FileGoOn(CMessage* const pMsg){
         LPCSTR p;
 
         wClientAck = 0;
+
+        do{
         if(!pMsg->content || pMsg->length <= 0){
                 OspLog(LOG_LVL_ERROR,"[FileGoOn]file name is NULL\n");
                 wClientAck = 1;
-                goto postError2client;
+                break;
         }
 
         if(pMsg->length > MAX_FILE_NAME_LENGTH-1 ||
                         pMsg->length <= 0 || !pMsg->content){
                 OspLog(LOG_LVL_ERROR,"[FileGoOn] file name error\n");
                 wClientAck = 2;
-                goto postError2client;
+                break;
         }
 
         //absolute path deal
@@ -875,26 +875,26 @@ void CSInstance::FileGoOn(CMessage* const pMsg){
         if(!CheckSign(pMsg->srcnode,NULL)){
                  OspLog(LOG_LVL_ERROR,"[FileGoOn]not signed,sign in first\n");
                  wClientAck = 3;
-                 goto postError2client;
+                 break;
         }
 
         if(!CheckFileIn((LPCSTR)wFileName,&tnFile)){
                  OspLog(LOG_LVL_ERROR,"[FileGoOn]file is not in the list\n");
                  wClientAck = 4;
-                 goto postError2client;
+                 break;
         }
 
         if(tnFile->wClientId != pMsg->srcnode){
                  OspLog(LOG_LVL_ERROR,"[FileGoOn]file being used by another client\n");
                  wClientAck = 5;
-                 goto postError2client;
+                 break;
         }
 
 #if 0
         if(tnFile->FileStatus == STATUS_RECEIVE_GO_ON){
                OspLog(SYS_LOG_LEVEL,"[FileGoOn]wait for going on\n");
                wClientAck = 6;
-               goto postError2client;
+
         }
 
 #endif
@@ -916,14 +916,14 @@ void CSInstance::FileGoOn(CMessage* const pMsg){
         if(tnFile->FileStatus != STATUS_CANCELLED){
                 OspLog(LOG_LVL_ERROR,"[FileGoOn]file status error\n");
                 wClientAck = 7;
-                goto postError2client;
+                break;
         }
 
         ins = GetPendingIns();
         if(!ins){
                  OspLog(LOG_LVL_ERROR,"[FileGoOn]no pending instance,wait...\n");
                  wClientAck = 8;
-                 goto postError2client;
+                 break;
         }
 
         tDemoInfo.srcid = pMsg->srcid;
@@ -938,7 +938,7 @@ void CSInstance::FileGoOn(CMessage* const pMsg){
                 wClientAck = 9;
                 ins->m_curState = IDLE_STATE;
                 ins->m_bSignInFlag = false;
-                goto postError2client;
+                break;
         }
         tnFile->FileStatus = STATUS_UPLOADING;
         tnFile->DealInstance = ins->GetInsID();
@@ -947,7 +947,7 @@ void CSInstance::FileGoOn(CMessage* const pMsg){
 
         return;
 
-postError2client:
+        }while(0);
 
         tUploadAck.wClientAck = wClientAck;
         if(OSP_OK != post(pMsg->srcid,FILE_UPLOAD_ACK,&tUploadAck
@@ -1100,17 +1100,18 @@ void CSInstance::FileStableRemove(CMessage* const pMsg){
         s8 ClientRemoveAck[200+CACHE_TAIL];
 
         wClientAck = 0;
+        do{
         if(!pMsg->content || pMsg->length <= 0){
                  OspLog(LOG_LVL_ERROR,"[FileStableRemove]file name is NULL\n");
                  wClientAck = 1;
-                 goto postError2gui;
+                 break;
         }
 
         if(pMsg->length > MAX_FILE_NAME_LENGTH-1 ||
                         pMsg->length <= 0 || !pMsg->content){
                  OspLog(LOG_LVL_ERROR,"[FileStableRemove] file name error\n");
                  wClientAck = 2;
-                 goto postError2gui;
+                 break;
         }
 
         //absolute path deal
@@ -1126,27 +1127,27 @@ void CSInstance::FileStableRemove(CMessage* const pMsg){
         if(!CheckSign(pMsg->srcnode,NULL)){
                  OspLog(LOG_LVL_ERROR,"[FileStableRemove]not signed,sign in first\n");
                  wClientAck = 3;
-                 goto postError2gui;
+                 break;
         }
 
         if(!CheckFileIn((LPCSTR)wFileName,&tnFile)){
                  OspLog(LOG_LVL_ERROR,"[FileStableRemove]file is not in the list\n");
                  wClientAck = 4;
-                 goto postError2gui;
+                 break;
         }
 
         if(tnFile->wClientId != pMsg->srcnode){
                 if(tnFile->FileStatus != STATUS_REMOVED){
                         OspLog(LOG_LVL_ERROR,"[FileStableRemove]file being used by another client\n");
                         wClientAck = 5;
-                        goto postError2gui;
+                        break;
                 }
         }
 
         if(tnFile->FileStatus == STATUS_RECEIVE_REMOVE){
                 OspLog(SYS_LOG_LEVEL,"[FileStableRemove]wait for going on\n");
                 wClientAck = 6;
-                goto postError2gui;
+                break;
         }
 
 #if 0
@@ -1167,21 +1168,21 @@ void CSInstance::FileStableRemove(CMessage* const pMsg){
         if(tnFile->FileStatus == STATUS_REMOVED){
                OspLog(SYS_LOG_LEVEL,"[FileStableRemove]file already removed\n");
                wClientAck = 7;
-               goto postError2gui;
+               break;
         }
 
         if(tnFile->FileStatus != STATUS_CANCELLED 
                         && tnFile->FileStatus != STATUS_FINISHED){
                 OspLog(LOG_LVL_ERROR,"[FileStableRemove]file status error\n");
                 wClientAck = 8;
-                goto postError2gui;
+                break;
         }
 
         ins = GetPendingIns();
         if(!ins){
                  OspLog(LOG_LVL_ERROR,"[FileStableRemove]no pending instance,wait...\n");
                  wClientAck = 9;
-                 goto postError2gui;
+                 break;
         }
 
         tDemoInfo.srcid = pMsg->srcid;
@@ -1196,12 +1197,12 @@ void CSInstance::FileStableRemove(CMessage* const pMsg){
                 ins->m_curState = IDLE_STATE;
                 ins->m_bSignInFlag = false;
                 wClientAck = 10;
-                goto postError2gui;
+                break;
         }
         OspLog(SYS_LOG_LEVEL,"[FileStableRemove]receive stable remove\n");
         return;
 
-postError2gui:
+        }while(0);
 
        sprintf(ClientRemoveAck,"{\"ClientAck\":%d,\"stableFlag\":1}",wClientAck);
        if(OSP_OK != post(pMsg->srcid,FILE_REMOVE_ACK,ClientRemoveAck,strlen(ClientRemoveAck)+1,pMsg->srcnode)){
@@ -1417,17 +1418,19 @@ void CSInstance::SignIn(CMessage *const pMsg){
        s8 ClientAck_s[8+CACHE_TAIL];
 
        wClientAck = 0;
+
+       do{
        if(!pMsg->content || pMsg->length <= 0){
                //通知客户端
                 OspLog(LOG_LVL_ERROR,"[SignIn] pMsg is NULL\n");
                 wClientAck = 1;
-                goto post2client;
+                break;
        }
 
        if(CheckSign(pMsg->srcnode,&tnClient)){
                 OspLog(LOG_LVL_ERROR,"[SignIn]Already Sign in\n");
                 wClientAck = 5;
-                goto post2client;
+                break;
        }
        
         signInfo = (s8*)pMsg->content;
@@ -1436,12 +1439,12 @@ void CSInstance::SignIn(CMessage *const pMsg){
         if(r < 0){
                 OspLog(LOG_LVL_ERROR,"[SignIn]json parser error:%d\n",r);
                 wClientAck = 2;
-                goto post2client;
+                break;
         }
         if(r < 1 || t[0].type != JSMN_OBJECT){
                 OspLog(LOG_LVL_ERROR,"[SignIn]json object expected\n");
                 wClientAck = 3;
-                goto post2client;
+                break;
         }
 
         for(i = 1;i < r;i++){
@@ -1478,7 +1481,7 @@ void CSInstance::SignIn(CMessage *const pMsg){
                                        if(!tClient){
                                             OspLog(LOG_LVL_ERROR,"[SignIn]client list malloc failed\n");
                                             wClientAck = 2;
-                                            goto post2client;
+                                            break;
                                        }
                                        //插入客户端表
                                        tClient->wClientId = pMsg->srcnode;
@@ -1489,7 +1492,7 @@ void CSInstance::SignIn(CMessage *const pMsg){
                                                                ,CInstance::DAEMON)){
                                                OspLog(LOG_LVL_ERROR,"[SignIn]regis disconnect error\n");
                                                wClientAck = 4;
-                                               goto post2client;
+                                               break;
                                        }
 
                                }else{
@@ -1503,7 +1506,7 @@ void CSInstance::SignIn(CMessage *const pMsg){
        if(!inUserList){
                wClientAck = 3;
                OspLog(SYS_LOG_LEVEL,"[SignIn]sign in failed\n");
-               goto post2client;
+               break;
        }
 
 #if USE_CONNECT_FLAG 
@@ -1512,7 +1515,8 @@ void CSInstance::SignIn(CMessage *const pMsg){
 
        OspLog(SYS_LOG_LEVEL,"[SignIn]sign in\n");
 
-post2client:
+       }while(0);
+
        sprintf(ClientAck_s,"{\"ClientAck\":%d}",wClientAck);
        if(OSP_OK != post(pMsg->srcid,SIGN_IN_ACK,(LPCSTR)ClientAck_s,strlen(ClientAck_s)+1,pMsg->srcnode)){
                OspLog(SYS_LOG_LEVEL,"[SignIn]post back:%d\n",wClientAck);
@@ -1536,10 +1540,11 @@ void CSInstance::SignOut(CMessage* const pMsg){
         }
 
 #endif
+        do{
         if(!CheckSign(pMsg->srcnode,&tClient)){
                  OspLog(LOG_LVL_ERROR,"[SignOut]not signed,sign in first\n");
                  wClientAck = 1;
-                 goto post2client;
+                 break;
         }
 
         list_for_each_safe(tFileHead,templist,&tFileList){
@@ -1587,7 +1592,7 @@ void CSInstance::SignOut(CMessage* const pMsg){
         tClient->bSignFlag = false;
         OspLog(SYS_LOG_LEVEL,"[SignOut]sign out\n");
 
-post2client:
+        }while(0);
 
         sprintf(ClientAck_s,"{\"ClientAck\":%d}",wClientAck);
         if(OSP_OK != post(pMsg->srcid,SIGN_OUT_ACK,(LPCSTR)ClientAck_s
