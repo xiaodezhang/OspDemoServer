@@ -562,8 +562,8 @@ void CSInstance::FileUpload(CMessage* const pMsg){
 
 post2client:
 
-        CheckFileIn((LPCSTR)file_name_path,&tnFile);
         if(wClientAck){
+                CheckFileIn((LPCSTR)file_name_path,&tnFile);
                 list_del(&tnFile->tListHead);
                 delete tnFile;
                 NextState(IDLE_STATE);
