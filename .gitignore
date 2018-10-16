@@ -40,6 +40,9 @@ Thumbs.db
 # cache file #
 *~
 *swp
+*swo
 *pyc
 *.swn
 *.swm
+*.linux
+*.out
