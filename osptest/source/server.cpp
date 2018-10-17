@@ -207,6 +207,12 @@ void CSInstance::DaemonInstanceEntry(CMessage *const pMsg,CApp *pCApp){
         }
 }
 
+/**********************************************************************
+ * *消息处理初始化，消息处理函数在此注册
+ **********************************************************************
+ *return:
+ *param:
+***********************************************************************/
 void CSInstance::MsgProcessInit(){
 
        //Daemon Instance
@@ -234,6 +240,12 @@ void CSInstance::MsgProcessInit(){
         RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_STABLE_REMOVE_DEAL),&CSInstance::FileStableRemoveDeal,&m_tCmdChain);
 }
 
+/**********************************************************************
+ * *用于注册的链表内存释放，用于instance的析构
+ **********************************************************************
+ *return:
+ *param:
+***********************************************************************/
 void CSInstance::NodeChainEnd(){
 
         tCmdNode *tmpNode;
@@ -258,7 +270,15 @@ void CSInstance::NodeChainEnd(){
                 m_tCmdDaemonChain = tmpNode;
         }
 }
-
+/**********************************************************************
+ * *消息处理函数注册，简单加入链表，使用hanshtable更合适
+ **********************************************************************
+ *param: EventState:状态事件值，由MAKEESTATE生成唯一值
+ *        c_MsgProcess: 处理函数指针
+ *        tppNodeChain: 注册链表
+ 
+ *return:操作成功与否
+***********************************************************************/
 bool CSInstance::RegMsgProFun(u32 EventState,MsgProcess c_MsgProcess,tCmdNode** tppNodeChain){
 
         tCmdNode *Node,*NewNode,*LNode;
@@ -298,6 +318,12 @@ bool CSInstance::RegMsgProFun(u32 EventState,MsgProcess c_MsgProcess,tCmdNode** 
         return true;
 }
 
+/**********************************************************************
+ * *根据EventState查找对应的处理函数
+ **********************************************************************
+ *return:
+ *param:
+***********************************************************************/
 bool CSInstance::FindProcess(u32 EventState,MsgProcess* c_MsgProcess,tCmdNode* tNodeChain){
 
         tCmdNode *Node;
@@ -318,7 +344,12 @@ bool CSInstance::FindProcess(u32 EventState,MsgProcess* c_MsgProcess,tCmdNode* t
 
         return false;
 }
-
+/**********************************************************************
+ * *接收到客户端文件上传命令接口
+ **********************************************************************
+ *return:
+ *param:
+***********************************************************************/
 void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){ 
 
         TFileList *tnFile;
@@ -329,6 +360,8 @@ void CSInstance::DaemonFileReceiveUpload(CMessage* const pMsg){
         u8 uploadAck[MAX_UPLOAD_ACK];
 
         wClientAck = 0;
+
+        /*连接和登录检测*/
 #if USE_CONNECT_FLAG 
         if(!m_bConnectedFlag){
                   OspLog(LOG_LVL_ERROR,"[DaemonFileReceiveUpload]disconnected\n");
